@@ -1,0 +1,13 @@
+*.o
+*.s
+*.tmp.s
+*.bin
+a.out
+cc90
+cc90*
+src/*.o
+src/*.s
+src/*.tmp.s
+tests/*.o
+tests/*.s
+tests/*.bin

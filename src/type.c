@@ -31,12 +31,21 @@ void type_init(void) {
     type_uint = type_new(TYPE_INT, 4, 4);
     type_uint->is_unsigned = 1;
 
+#ifdef TARGET_I386
+    type_long = type_new(TYPE_LONG, 4, 4);
+    type_ulong = type_new(TYPE_LONG, 4, 4);
+    type_ulong->is_unsigned = 1;
+
+    type_float = type_new(TYPE_FLOAT, 4, 4);
+    type_double = type_new(TYPE_DOUBLE, 8, 4);
+#else
     type_long = type_new(TYPE_LONG, 8, 8);
     type_ulong = type_new(TYPE_LONG, 8, 8);
     type_ulong->is_unsigned = 1;
 
     type_float = type_new(TYPE_FLOAT, 4, 4);
     type_double = type_new(TYPE_DOUBLE, 8, 8);
+#endif
 }
 
 Type *type_new(TypeKind kind, int size, int align) {
@@ -58,7 +67,11 @@ Type *type_new(TypeKind kind, int size, int align) {
 }
 
 Type *type_pointer_to(Type *base) {
+#ifdef TARGET_I386
+    Type *t = type_new(TYPE_PTR, 4, 4);
+#else
     Type *t = type_new(TYPE_PTR, 8, 8);
+#endif
     t->base = base;
     return t;
 }

@@ -11,20 +11,33 @@ static void print_usage(const char *progname) {
     printf("Usage: %s [options] <input-file.c>\n\n", progname);
     printf("Options:\n");
     printf("  -o <file>       Place the output into <file>\n");
+#ifdef TARGET_I386
+    printf("  -S              Compile only; generate x86 (i386 32-bit) assembly (.s)\n");
+#else
     printf("  -S              Compile only; generate x86_64 assembly (.s)\n");
+#endif
     printf("  -c              Compile and assemble, but do not link (.o)\n");
     printf("  -E              Preprocess only; do not compile\n");
     printf("  -I <dir>        Add directory to include search path\n");
     printf("  -D <macro>[=v]  Define macro with optional value\n");
     printf("  -v, --version   Display compiler version and public domain notice\n");
     printf("  -h, --help      Display this information\n\n");
+#ifdef TARGET_I386
+    printf("This is a C90 (ANSI C89) compiler targeting x86 32-bit (i386) Linux.\n");
+#else
     printf("This is a C90 (ANSI C89) compiler targeting x86_64 Linux.\n");
+#endif
     printf("Released into the Public Domain under the Unlicense.\n");
 }
 
 static void print_version(void) {
+#ifdef TARGET_I386
+    printf("cc90-i386 version 1.0.0 (i386-linux)\n");
+    printf("A Public Domain C90 / ANSI C89 Compiler targeting 32-bit x86 (i386).\n");
+#else
     printf("cc90 version 1.0.0 (x86_64-linux)\n");
     printf("A Public Domain C90 / ANSI C89 Compiler written in C90.\n");
+#endif
     printf("This software is dedicated to the public domain (Unlicense).\n");
 }
 
@@ -229,7 +242,11 @@ int main(int argc, char **argv) {
         } else {
             obj_file = replace_extension(g_config.input_file, ".o");
         }
+#ifdef TARGET_I386
+        sprintf(cmd, "as --32 -o %s %s", obj_file, asm_file);
+#else
         sprintf(cmd, "as -o %s %s", obj_file, asm_file);
+#endif
         if (system(cmd) != 0) {
             fprintf(stderr, "cc90: assembler failed\n");
             if (need_cleanup_asm) remove(asm_file);
@@ -243,6 +260,17 @@ int main(int argc, char **argv) {
     {
         char cmd[2048];
         char *exe_file = g_config.output_file ? g_config.output_file : "a.out";
+#ifdef TARGET_I386
+        sprintf(cmd, "gcc -m32 -no-pie -o %s %s", exe_file, asm_file);
+        if (system(cmd) != 0) {
+            sprintf(cmd, "gcc -m32 -o %s %s", exe_file, asm_file);
+            if (system(cmd) != 0) {
+                fprintf(stderr, "cc90: linking failed\n");
+                if (need_cleanup_asm) remove(asm_file);
+                return 1;
+            }
+        }
+#else
         sprintf(cmd, "gcc -no-pie -o %s %s", exe_file, asm_file);
         if (system(cmd) != 0) {
             /* Try without -no-pie */
@@ -253,6 +281,7 @@ int main(int argc, char **argv) {
                 return 1;
             }
         }
+#endif
         if (need_cleanup_asm) remove(asm_file);
     }
 

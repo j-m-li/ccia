@@ -62,8 +62,13 @@ void c90_error(const char *filename, int line, const char *fmt, ...) {
     int arg_idx = 0;
     int is_long = 0;
 #ifdef __CC90__
+#ifdef TARGET_I386
+    a1 = *((const char **)&fmt + 1);
+    a2 = *((const char **)&fmt + 2);
+#else
     a1 = *((const char **)&fmt - 1);
     a2 = *((const char **)&fmt - 2);
+#endif
 #else
     va_list ap;
     va_start(ap, fmt);
@@ -135,8 +140,13 @@ void c90_warn(const char *filename, int line, const char *fmt, ...) {
     int arg_idx = 0;
     int is_long = 0;
 #ifdef __CC90__
+#ifdef TARGET_I386
+    a1 = *((const char **)&fmt + 1);
+    a2 = *((const char **)&fmt + 2);
+#else
     a1 = *((const char **)&fmt - 1);
     a2 = *((const char **)&fmt - 2);
+#endif
 #else
     va_list ap;
     va_start(ap, fmt);

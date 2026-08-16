@@ -1336,7 +1336,11 @@ static AstNode *parse_compound_stmt(Parser *p) {
                     }
                     vec_push(p->globals, sym);
                 } else {
+#ifdef TARGET_I386
+                    p->current_stack_offset += (type->size + 3) & ~3; /* 4-byte aligned stack slots */
+#else
                     p->current_stack_offset += (type->size + 7) & ~7; /* 8-byte aligned stack slots */
+#endif
                     sym->stack_offset = -p->current_stack_offset;
                     if (p->current_func_locals) {
                         vec_push(p->current_func_locals, sym);
@@ -1438,6 +1442,22 @@ AstNode *parser_parse(Parser *p) {
 
             /* Add function parameters as local symbols */
             if (type->params) {
+#ifdef TARGET_I386
+                int param_offset = 8;
+                for (i = 0; i < type->params->size; i++) {
+                    Param *param = (Param *)vec_get(type->params, i);
+                    if (param->name) {
+                        Symbol *psym = symbol_new(SYM_VAR, param->name, param->type);
+                        int psize = (param->type->size + 3) & ~3;
+                        if (psize < 4) psize = 4;
+                        psym->stack_offset = param_offset;
+                        param_offset += psize;
+                        scope_add_symbol(psym);
+                        vec_push(func_node->u.func_def.params, psym);
+                        vec_push(p->current_func_locals, psym);
+                    }
+                }
+#else
                 for (i = 0; i < type->params->size; i++) {
                     Param *param = (Param *)vec_get(type->params, i);
                     if (param->name) {
@@ -1454,8 +1474,10 @@ AstNode *parser_parse(Parser *p) {
                         vec_push(p->current_func_locals, psym);
                     }
                 }
+#endif
             }
 
+#ifndef TARGET_I386
             if (type->is_varargs) {
                 int start_reg = type->params ? type->params->size : 0;
                 while (start_reg < 6) {
@@ -1463,6 +1485,7 @@ AstNode *parser_parse(Parser *p) {
                     start_reg++;
                 }
             }
+#endif
 
             func_node->u.func_def.body = parse_compound_stmt(p);
             func_node->u.func_def.stack_size = (p->current_stack_offset + 15) & ~15; /* 16-byte align */

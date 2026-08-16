@@ -44,6 +44,41 @@ Preprocessor *cpp_new(void) {
 
     /* Add default include directories */
     vec_push(cpp->include_paths, c90_strdup("."));
+#ifdef TARGET_I386
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-redhat-linux/16/32/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-redhat-linux/16/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/14/32/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/14/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/13/32/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/13/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/12/32/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/12/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/i686-linux-gnu/14/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/i686-linux-gnu/13/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/i686-linux-gnu/12/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/include/i386-linux-gnu"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/local/include"));
+    vec_push(cpp->include_paths, c90_strdup("/usr/include"));
+
+    /* Predefine standard C90 macros for i386 */
+    cpp_define_macro(cpp, "__STDC__", "1");
+    cpp_define_macro(cpp, "__WORDSIZE", "32");
+    cpp_define_macro(cpp, "__i386", "1");
+    cpp_define_macro(cpp, "__i386__", "1");
+    cpp_define_macro(cpp, "__x86__", "1");
+    cpp_define_macro(cpp, "__i686", "1");
+    cpp_define_macro(cpp, "__i686__", "1");
+    cpp_define_macro(cpp, "__ILP32__", "1");
+    cpp_define_macro(cpp, "_ILP32", "1");
+    cpp_define_macro(cpp, "__linux__", "1");
+    cpp_define_macro(cpp, "__unix__", "1");
+    cpp_define_macro(cpp, "__GNUC__", "4");
+    cpp_define_macro(cpp, "__GNUC_MINOR__", "9");
+    cpp_define_macro(cpp, "__GNUC_PATCHLEVEL__", "0");
+    cpp_define_macro(cpp, "__CC90__", "1");
+    cpp_define_macro(cpp, "__CC90_I386__", "1");
+    cpp_define_macro(cpp, "__CC90_VERSION__", "\"1.0.0\"");
+#else
     vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-redhat-linux/16/include"));
     vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/14/include"));
     vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/13/include"));
@@ -70,6 +105,7 @@ Preprocessor *cpp_new(void) {
     cpp_define_macro(cpp, "__GNUC_PATCHLEVEL__", "0");
     cpp_define_macro(cpp, "__CC90__", "1");
     cpp_define_macro(cpp, "__CC90_VERSION__", "\"1.0.0\"");
+#endif
 
     return cpp;
 }
