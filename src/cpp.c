@@ -42,25 +42,11 @@ Preprocessor *cpp_new(void) {
     cpp->current_file = NULL;
     cpp->current_line = 0;
 
-    /* Add default include directories */
+    /* Add current directory as initial include search path */
     vec_push(cpp->include_paths, c90_strdup("."));
-#ifdef TARGET_I386
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-redhat-linux/16/32/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-redhat-linux/16/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/14/32/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/14/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/13/32/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/13/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/12/32/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/12/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/i686-linux-gnu/14/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/i686-linux-gnu/13/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/i686-linux-gnu/12/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/include/i386-linux-gnu"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/local/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/include"));
 
-    /* Predefine standard C90 macros for i386 */
+    /* Predefine standard C90 macros */
+#ifdef TARGET_I386
     cpp_define_macro(cpp, "__STDC__", "1");
     cpp_define_macro(cpp, "__WORDSIZE", "32");
     cpp_define_macro(cpp, "__i386", "1");
@@ -79,15 +65,6 @@ Preprocessor *cpp_new(void) {
     cpp_define_macro(cpp, "__CC90_I386__", "1");
     cpp_define_macro(cpp, "__CC90_VERSION__", "\"1.0.0\"");
 #else
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-redhat-linux/16/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/14/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/13/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/lib/gcc/x86_64-linux-gnu/12/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/include/x86_64-linux-gnu"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/local/include"));
-    vec_push(cpp->include_paths, c90_strdup("/usr/include"));
-
-    /* Predefine standard C90 macros */
     cpp_define_macro(cpp, "__STDC__", "1");
     cpp_define_macro(cpp, "__WORDSIZE", "64");
     cpp_define_macro(cpp, "__WORDSIZE_TIME64_COMPAT32", "1");

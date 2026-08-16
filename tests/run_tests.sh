@@ -8,7 +8,10 @@ set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$DIR/.." && pwd)"
-CC90="$ROOT_DIR/cc90"
+CC90="${CC90:-$ROOT_DIR/cc90}"
+if [ -z "$CC90_INCLUDES" ]; then
+    CC90_INCLUDES="-I$ROOT_DIR/include $(for d in /usr/lib/gcc/x86_64-redhat-linux/*/include /usr/lib/gcc/x86_64-linux-gnu/*/include /usr/include/x86_64-linux-gnu /usr/local/include /usr/include; do [ -d "$d" ] && echo "-I$d"; done)"
+fi
 
 echo "=========================================="
 echo " Running CC90 ANSI C90 Compiler Test Suite"
@@ -35,7 +38,7 @@ for t in "${TESTS[@]}"; do
     printf "Testing %-20s ... " "$t"
     
     # Compile with cc90
-    if ! "$CC90" -o "$BIN" "$SRC" 2> "$DIR/$t.err"; then
+    if ! $CC90 $CC90_INCLUDES -o "$BIN" "$SRC" 2> "$DIR/$t.err"; then
         echo "FAILED (Compilation error)"
         cat "$DIR/$t.err"
         exit 1

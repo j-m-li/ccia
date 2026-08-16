@@ -427,11 +427,11 @@ static Token *read_number_literal(Lexer *l) {
         Token *tok = token_new(TOK_INT_LIT, sb->data, l->filename, start_line, start_col);
         tok->is_unsigned = is_unsigned;
         if (is_hex) {
-            tok->int_val = strtol(sb->data, NULL, 16);
+            tok->int_val = (long)strtoul(sb->data, NULL, 16);
         } else if (is_oct) {
-            tok->int_val = strtol(sb->data, NULL, 8);
+            tok->int_val = (long)strtoul(sb->data, NULL, 8);
         } else {
-            tok->int_val = strtol(sb->data, NULL, 10);
+            tok->int_val = (long)strtoul(sb->data, NULL, 10);
         }
         strbuf_free(sb);
         return tok;
