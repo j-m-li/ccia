@@ -152,6 +152,54 @@ static void gen_store(CodeGen *gen, Type *type) {
     }
 }
 
+static void gen_bitfield_load(CodeGen *gen, Member *m) {
+    if (!m || m->bit_width <= 0) return;
+    if (m->type && m->type->is_unsigned) {
+        if (m->bit_offset > 0) {
+            emit(gen, "    shrl $%d, %%eax", m->bit_offset);
+        }
+        if (m->bit_width < 32) {
+            unsigned int mask = (1U << m->bit_width) - 1U;
+            emit(gen, "    andl $%u, %%eax", mask);
+        }
+    } else {
+        int sh = 32 - (m->bit_offset + m->bit_width);
+        if (sh > 0) {
+            emit(gen, "    sall $%d, %%eax", sh);
+        }
+        emit(gen, "    sarl $%d, %%eax", 32 - m->bit_width);
+    }
+}
+
+static void gen_bitfield_store(CodeGen *gen, Member *m) {
+    unsigned int mask = (1U << m->bit_width) - 1U;
+    unsigned int clear_mask = ~(mask << m->bit_offset);
+    emit(gen, "    andl $%u, %%eax", mask);
+    if (m->bit_offset > 0) {
+        emit(gen, "    sall $%d, %%eax", m->bit_offset);
+    }
+    emit(gen, "    movl %%eax, %%edx"); /* New bits in %edx */
+    emit(gen, "    popl %%ecx"); /* Address in %ecx */
+    if (m->type->size == 1) emit(gen, "    movzbl (%%ecx), %%eax");
+    else if (m->type->size == 2) emit(gen, "    movzwl (%%ecx), %%eax");
+    else emit(gen, "    movl (%%ecx), %%eax");
+    if (m->type->size == 1) emit(gen, "    andl $%u, %%eax", (unsigned int)(clear_mask & 0xFF));
+    else if (m->type->size == 2) emit(gen, "    andl $%u, %%eax", (unsigned int)(clear_mask & 0xFFFF));
+    else emit(gen, "    andl $%u, %%eax", clear_mask);
+    emit(gen, "    orl %%edx, %%eax");
+    if (m->type->size == 1) emit(gen, "    movb %%al, (%%ecx)");
+    else if (m->type->size == 2) emit(gen, "    movw %%ax, (%%ecx)");
+    else emit(gen, "    movl %%eax, (%%ecx)");
+    emit(gen, "    movl %%edx, %%eax");
+    if (m->type && m->type->is_unsigned) {
+        if (m->bit_offset > 0) emit(gen, "    shrl $%d, %%eax", m->bit_offset);
+    } else {
+        int sh = 32 - (m->bit_offset + m->bit_width);
+        if (sh > 0) emit(gen, "    sall $%d, %%eax", sh);
+        emit(gen, "    sarl $%d, %%eax", 32 - m->bit_width);
+    }
+}
+
 /* ========================================================================= */
 /* Lvalue Address Generation (32-bit i386)                                   */
 /* ========================================================================= */
@@ -411,57 +459,85 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
 
         case AST_PRE_INC:
         case AST_PRE_DEC: {
+            AstNode *op = node->u.unop.operand;
+            Member *m = (op->kind == AST_MEMBER) ? op->u.member.member : NULL;
             int step = 1;
             if (node->type && node->type->base) step = node->type->base->size;
-            gen_lval(gen, node->u.unop.operand);
+            gen_lval(gen, op);
             emit(gen, "    pushl %%eax");
             gen_load(gen, node->type);
+            if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             if (node->kind == AST_PRE_INC) {
                 emit(gen, "    addl $%d, %%eax", step);
             } else {
                 emit(gen, "    subl $%d, %%eax", step);
             }
-            emit(gen, "    popl %%ecx");
-            gen_store(gen, node->type);
+            if (m && m->bit_width > 0) {
+                gen_bitfield_store(gen, m);
+            } else {
+                emit(gen, "    popl %%ecx");
+                gen_store(gen, node->type);
+            }
             return;
         }
 
         case AST_POST_INC:
         case AST_POST_DEC: {
+            AstNode *op = node->u.unop.operand;
+            Member *m = (op->kind == AST_MEMBER) ? op->u.member.member : NULL;
             int step = 1;
             if (node->type && node->type->base) step = node->type->base->size;
-            gen_lval(gen, node->u.unop.operand);
+            gen_lval(gen, op);
             emit(gen, "    pushl %%eax");
             gen_load(gen, node->type);
+            if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             emit(gen, "    pushl %%eax"); /* Save original value */
             if (node->kind == AST_POST_INC) {
                 emit(gen, "    addl $%d, %%eax", step);
             } else {
                 emit(gen, "    subl $%d, %%eax", step);
             }
-            emit(gen, "    movl 4(%%esp), %%ecx");
-            gen_store(gen, node->type);
-            emit(gen, "    popl %%eax"); /* Restore original value */
-            emit(gen, "    addl $4, %%esp"); /* Pop saved lval */
+            if (m && m->bit_width > 0) {
+                emit(gen, "    movl 4(%%esp), %%ecx");
+                emit(gen, "    pushl %%ecx");
+                gen_bitfield_store(gen, m);
+                emit(gen, "    popl %%eax"); /* Restore original value */
+                emit(gen, "    addl $4, %%esp"); /* Pop saved lval */
+            } else {
+                emit(gen, "    movl 4(%%esp), %%ecx");
+                gen_store(gen, node->type);
+                emit(gen, "    popl %%eax"); /* Restore original value */
+                emit(gen, "    addl $4, %%esp"); /* Pop saved lval */
+            }
             return;
         }
 
-        case AST_MEMBER:
+        case AST_MEMBER: {
+            Member *m = node->u.member.member;
             gen_lval(gen, node);
             gen_load(gen, node->type);
+            if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             return;
+        }
 
-        case AST_ASSIGN:
-            gen_lval(gen, node->u.binop.lhs);
+        case AST_ASSIGN: {
+            AstNode *lhs = node->u.binop.lhs;
+            Member *m = (lhs->kind == AST_MEMBER) ? lhs->u.member.member : NULL;
+            gen_lval(gen, lhs);
             emit(gen, "    pushl %%eax");
             gen_expr(gen, node->u.binop.rhs);
-            if (node->u.binop.lhs->type && node->u.binop.rhs->type &&
-                !type_equal(node->u.binop.lhs->type, node->u.binop.rhs->type)) {
-                gen_cast_to(gen, node->u.binop.rhs->type, node->u.binop.lhs->type);
+            if (lhs->type && node->u.binop.rhs->type &&
+                !type_equal(lhs->type, node->u.binop.rhs->type)) {
+                gen_cast_to(gen, node->u.binop.rhs->type, lhs->type);
             }
-            emit(gen, "    popl %%ecx");
-            gen_store(gen, node->type);
+            if (m && m->bit_width > 0) {
+                gen_bitfield_store(gen, m);
+            } else {
+                emit(gen, "    popl %%ecx");
+                gen_store(gen, node->type);
+            }
             return;
+        }
 
         case AST_ADD_ASSIGN:
         case AST_SUB_ASSIGN:
@@ -473,12 +549,15 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         case AST_AND_ASSIGN:
         case AST_XOR_ASSIGN:
         case AST_OR_ASSIGN: {
+            AstNode *lhs = node->u.binop.lhs;
+            Member *m = (lhs->kind == AST_MEMBER) ? lhs->u.member.member : NULL;
             int step = 1;
             int is_unsigned = node->type && node->type->is_unsigned;
             if (node->type && node->type->base) step = node->type->base->size;
-            gen_lval(gen, node->u.binop.lhs);
+            gen_lval(gen, lhs);
             emit(gen, "    pushl %%eax");
             gen_load(gen, node->type);
+            if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             emit(gen, "    pushl %%eax");
             gen_expr(gen, node->u.binop.rhs);
             emit(gen, "    movl %%eax, %%ecx");
@@ -526,8 +605,12 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 emit(gen, "    orl %%ecx, %%eax");
             }
 
-            emit(gen, "    popl %%ecx");
-            gen_store(gen, node->type);
+            if (m && m->bit_width > 0) {
+                gen_bitfield_store(gen, m);
+            } else {
+                emit(gen, "    popl %%ecx");
+                gen_store(gen, node->type);
+            }
             return;
         }
 
@@ -925,11 +1008,35 @@ static void gen_local_initializer(CodeGen *gen, Symbol *sym, Type *type, Initial
 
     if (init->is_compound) {
         int i;
-        Type *elem_type = (type && type->kind == TYPE_ARRAY) ? type->base : type;
-        int elem_size = elem_type ? elem_type->size : 4;
+        if (type && type->kind == TYPE_STRUCT) {
+            Member *m = type->members;
+            for (i = 0; i < init->elements->size && m; i++, m = m->next) {
+                Initializer *elem = (Initializer *)vec_get(init->elements, i);
+                if (m->bit_width > 0) {
+                    if (elem->expr) {
+                        gen_expr(gen, elem->expr);
+                        emit(gen, "    leal %d(%%ebp), %%ecx", sym->stack_offset + base_offset + m->offset);
+                        emit(gen, "    pushl %%ecx");
+                        gen_bitfield_store(gen, m);
+                    }
+                } else {
+                    gen_local_initializer(gen, sym, m->type, elem, base_offset + m->offset);
+                }
+            }
+            return;
+        }
+        if (type && type->kind == TYPE_ARRAY) {
+            Type *elem_type = type->base ? type->base : type_int;
+            int elem_size = elem_type ? elem_type->size : 4;
+            for (i = 0; i < init->elements->size; i++) {
+                Initializer *elem = (Initializer *)vec_get(init->elements, i);
+                gen_local_initializer(gen, sym, elem_type, elem, base_offset + i * elem_size);
+            }
+            return;
+        }
         for (i = 0; i < init->elements->size; i++) {
             Initializer *elem = (Initializer *)vec_get(init->elements, i);
-            gen_local_initializer(gen, sym, elem_type, elem, base_offset + i * elem_size);
+            gen_local_initializer(gen, sym, type->base ? type->base : type_int, elem, base_offset + i * 4);
         }
     } else if (init->expr) {
         Type *target_type;
@@ -1154,18 +1261,48 @@ static void gen_global_init(CodeGen *gen, Initializer *init, Type *type) {
         if (type && type->kind == TYPE_STRUCT) {
             Member *m = type->members;
             int cur_offset = 0;
-            for (i = 0; i < init->elements->size && m; i++, m = m->next) {
-                Initializer *elem = (Initializer *)vec_get(init->elements, i);
-                if (m->offset > cur_offset) {
-                    emit(gen, "    .zero %d", m->offset - cur_offset);
-                    cur_offset = m->offset;
+            for (i = 0; i < init->elements->size && m; ) {
+                if (m->bit_width > 0) {
+                    int container_offset = m->offset;
+                    Type *container_type = m->type;
+                    unsigned long packed_val = 0;
+                    if (container_offset > cur_offset) {
+                        emit(gen, "    .zero %d", container_offset - cur_offset);
+                        cur_offset = container_offset;
+                    }
+                    while (i < init->elements->size && m && m->bit_width > 0 && m->offset == container_offset) {
+                        Initializer *elem = (Initializer *)vec_get(init->elements, i);
+                        long val = 0;
+                        if (elem->expr) val = eval_const_expr(elem->expr);
+                        if (m->bit_width < 32) {
+                            unsigned int mask = (1U << m->bit_width) - 1U;
+                            packed_val |= ((unsigned long)val & mask) << m->bit_offset;
+                        } else {
+                            packed_val |= (unsigned long)val;
+                        }
+                        i++;
+                        m = m->next;
+                    }
+                    if (container_type->size == 1) emit(gen, "    .byte %u", (unsigned int)(packed_val & 0xFF));
+                    else if (container_type->size == 2) emit(gen, "    .value %u", (unsigned int)(packed_val & 0xFFFF));
+                    else emit(gen, "    .long %u", (unsigned int)(packed_val & 0xFFFFFFFFU));
+                    cur_offset += (container_type->size > 0 ? container_type->size : 4);
+                } else {
+                    Initializer *elem = (Initializer *)vec_get(init->elements, i);
+                    if (m->offset > cur_offset) {
+                        emit(gen, "    .zero %d", m->offset - cur_offset);
+                        cur_offset = m->offset;
+                    }
+                    gen_global_init(gen, elem, m->type);
+                    cur_offset += (m->type && m->type->size > 0) ? m->type->size : 4;
+                    i++;
+                    m = m->next;
                 }
-                gen_global_init(gen, elem, m->type);
-                cur_offset += (m->type && m->type->size > 0) ? m->type->size : 4;
             }
             if (cur_offset < type->size) {
                 emit(gen, "    .zero %d", type->size - cur_offset);
             }
+            return;
         } else if (type && type->kind == TYPE_ARRAY) {
             Type *elem_type = type->base ? type->base : type_int;
             for (i = 0; i < init->elements->size; i++) {

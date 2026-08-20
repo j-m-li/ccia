@@ -735,6 +735,9 @@ static Type *parse_struct_union_body(Parser *p, int is_union, const char *tag) {
     Member head;
     Member *tail = &head;
     int current_offset = 0;
+    int current_bit_offset = 0;
+    int last_unit_size = 0;
+    int last_unit_offset = 0;
     int max_align = 1;
 
     if (tag) {
@@ -757,47 +760,97 @@ static Type *parse_struct_union_body(Parser *p, int is_union, const char *tag) {
             char *mname = NULL;
             Type *mtype;
             Member *m;
+            int is_bitfield = 0;
+            int bit_width = 0;
 
             if (match(p, ';')) break;
 
             mtype = parse_declarator(p, base, &mname);
+
+            /* Check for bitfield width: int field : width; or unnamed : width; */
+            if (match(p, ':')) {
+                AstNode *bw = parse_conditional(p);
+                is_bitfield = 1;
+                bit_width = (int)eval_const_expr(bw);
+            }
+
             m = (Member *)c90_malloc(sizeof(Member));
             m->name = mname;
             m->type = mtype;
             m->bit_offset = 0;
-            m->bit_width = 0;
+            m->bit_width = bit_width;
             m->next = NULL;
-
-            /* Check for bitfield width: int field : width; */
-            if (match(p, ':')) {
-                AstNode *bw = parse_conditional(p);
-                if (bw && bw->kind == AST_INT_LIT) {
-                    m->bit_width = (int)bw->u.int_val.val;
-                }
-            }
 
             if (is_union) {
                 m->offset = 0;
+                m->bit_offset = 0;
                 if (mtype->size > current_offset) current_offset = mtype->size;
                 if (mtype->align > max_align) max_align = mtype->align;
             } else {
-                /* Align field offset */
-                if (mtype->align > 1) {
-                    current_offset = (current_offset + mtype->align - 1) & ~(mtype->align - 1);
+                if (is_bitfield) {
+                    int unit_bits = (mtype && mtype->size > 0) ? mtype->size * 8 : 32;
+                    if (bit_width == 0) {
+                        /* Unnamed zero-width bitfield: align to next boundary */
+                        if (current_bit_offset > 0) {
+                            current_offset = last_unit_offset + last_unit_size;
+                            current_bit_offset = 0;
+                            last_unit_size = 0;
+                        }
+                    } else {
+                        if (current_bit_offset > 0 &&
+                            current_bit_offset + bit_width <= unit_bits &&
+                            mtype->size == last_unit_size) {
+                            m->offset = last_unit_offset;
+                            m->bit_offset = current_bit_offset;
+                            current_bit_offset += bit_width;
+                        } else {
+                            if (current_bit_offset > 0) {
+                                current_offset = last_unit_offset + last_unit_size;
+                                current_bit_offset = 0;
+                            }
+                            if (mtype->align > 1) {
+                                current_offset = (current_offset + mtype->align - 1) & ~(mtype->align - 1);
+                            }
+                            last_unit_offset = current_offset;
+                            last_unit_size = mtype->size;
+                            m->offset = current_offset;
+                            m->bit_offset = 0;
+                            current_bit_offset = bit_width;
+                            if (mtype->align > max_align) max_align = mtype->align;
+                            if (last_unit_offset + last_unit_size > current_offset) {
+                                current_offset = last_unit_offset + last_unit_size;
+                            }
+                        }
+                    }
+                } else {
+                    if (current_bit_offset > 0) {
+                        current_offset = last_unit_offset + last_unit_size;
+                        current_bit_offset = 0;
+                        last_unit_size = 0;
+                    }
+                    if (mtype->align > 1) {
+                        current_offset = (current_offset + mtype->align - 1) & ~(mtype->align - 1);
+                    }
+                    m->offset = current_offset;
+                    current_offset += mtype->size;
+                    if (mtype->align > max_align) max_align = mtype->align;
                 }
-                m->offset = current_offset;
-                current_offset += mtype->size;
-                if (mtype->align > max_align) max_align = mtype->align;
             }
 
-            tail->next = m;
-            tail = tail->next;
+            if (mname || (!is_bitfield)) {
+                tail->next = m;
+                tail = tail->next;
+            }
 
             if (match(p, ';')) break;
             expect(p, ',');
         }
     }
     expect(p, '}');
+
+    if (current_bit_offset > 0) {
+        current_offset = last_unit_offset + last_unit_size;
+    }
 
     /* Pad total size to alignment */
     if (max_align > 1) {
@@ -814,7 +867,7 @@ static Type *parse_struct_union_body(Parser *p, int is_union, const char *tag) {
     return st;
 }
 
-static long eval_const_expr(AstNode *n) {
+long eval_const_expr(AstNode *n) {
     if (!n) return 0;
     switch (n->kind) {
         case AST_INT_LIT:
