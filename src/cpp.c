@@ -122,7 +122,6 @@ static Token *clone_token(Token *t) {
     tok->kind = t->kind;
     tok->str = t->str ? c90_strdup(t->str) : NULL;
     tok->int_val = t->int_val;
-    tok->float_val = t->float_val;
     tok->is_unsigned = t->is_unsigned;
     tok->filename = t->filename ? c90_strdup(t->filename) : NULL;
     tok->line = t->line;
@@ -174,7 +173,6 @@ static Vector *expand_macro(Preprocessor *cpp, Macro *m, Vector *args) {
                             str_tok->kind = TOK_STR_LIT;
                             str_tok->str = c90_strdup(sb->data);
                             str_tok->int_val = sb->length;
-                            str_tok->float_val = 0;
                             str_tok->is_unsigned = 0;
                             str_tok->filename = t->filename ? c90_strdup(t->filename) : NULL;
                             str_tok->line = t->line;

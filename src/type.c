@@ -16,6 +16,7 @@ Type *type_long = NULL;
 Type *type_ulong = NULL;
 Type *type_float = NULL;
 Type *type_double = NULL;
+Type *type_ldouble = NULL;
 
 void type_init(void) {
     type_void = type_new(TYPE_VOID, 1, 1);
@@ -38,6 +39,7 @@ void type_init(void) {
 
     type_float = type_new(TYPE_FLOAT, 4, 4);
     type_double = type_new(TYPE_DOUBLE, 8, 4);
+    type_ldouble = type_new(TYPE_LDOUBLE, 16, 4);
 #else
     type_long = type_new(TYPE_LONG, 8, 8);
     type_ulong = type_new(TYPE_LONG, 8, 8);
@@ -45,6 +47,7 @@ void type_init(void) {
 
     type_float = type_new(TYPE_FLOAT, 4, 4);
     type_double = type_new(TYPE_DOUBLE, 8, 8);
+    type_ldouble = type_new(TYPE_LDOUBLE, 16, 16);
 #endif
 }
 
@@ -122,7 +125,7 @@ int type_is_integer(Type *t) {
 
 int type_is_floating(Type *t) {
     if (!t) return 0;
-    return t->kind == TYPE_FLOAT || t->kind == TYPE_DOUBLE;
+    return t->kind == TYPE_FLOAT || t->kind == TYPE_DOUBLE || t->kind == TYPE_LDOUBLE;
 }
 
 int type_is_arithmetic(Type *t) {
@@ -185,6 +188,7 @@ int type_is_compatible(Type *a, Type *b) {
 Type *type_max(Type *a, Type *b) {
     if (!a) return b;
     if (!b) return a;
+    if (a->kind == TYPE_LDOUBLE || b->kind == TYPE_LDOUBLE) return type_ldouble;
     if (a->kind == TYPE_DOUBLE || b->kind == TYPE_DOUBLE) return type_double;
     if (a->kind == TYPE_FLOAT || b->kind == TYPE_FLOAT) return type_float;
     if (a->kind == TYPE_LONG || b->kind == TYPE_LONG) {

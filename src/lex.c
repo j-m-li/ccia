@@ -197,7 +197,6 @@ static Token *token_new(int kind, const char *str, const char *filename, int lin
     tok->kind = kind;
     tok->str = str ? c90_strdup(str) : NULL;
     tok->int_val = 0;
-    tok->float_val = 0.0;
     tok->is_unsigned = 0;
     tok->filename = filename ? c90_strdup(filename) : NULL;
     tok->line = line;
@@ -366,6 +365,7 @@ static Token *read_number_literal(Lexer *l) {
     int is_hex = 0;
     int is_oct = 0;
     int is_unsigned = 0;
+    int float_suffix = 0; /* 0 = double, 1 = float, 2 = long double */
     
     if (peek_char(l, 0) == '0' && (peek_char(l, 1) == 'x' || peek_char(l, 1) == 'X')) {
         is_hex = 1;
@@ -409,9 +409,11 @@ static Token *read_number_literal(Lexer *l) {
             is_unsigned = 1;
             next_char(l);
         } else if (c == 'l' || c == 'L') {
+            if (is_float) float_suffix = 2;
             next_char(l);
         } else if (c == 'f' || c == 'F') {
             is_float = 1;
+            float_suffix = 1;
             next_char(l);
         } else {
             break;
@@ -420,7 +422,7 @@ static Token *read_number_literal(Lexer *l) {
     
     if (is_float) {
         Token *tok = token_new(TOK_FLOAT_LIT, sb->data, l->filename, start_line, start_col);
-        tok->float_val = strtod(sb->data, NULL);
+        tok->is_unsigned = float_suffix;
         strbuf_free(sb);
         return tok;
     } else {

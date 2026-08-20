@@ -76,6 +76,47 @@ static char *replace_extension(const char *filename, const char *new_ext) {
     return c90_strdup(buf);
 }
 
+static char *get_softfloat_obj(const char *progname) {
+    static char path[2048];
+    char dir[1024];
+    char *slash;
+    FILE *fp;
+
+#ifdef TARGET_I386
+    const char *sf_name = "src/softfloat.i386.o";
+    const char *sf_base = "softfloat.i386.o";
+#else
+    const char *sf_name = "src/softfloat.o";
+    const char *sf_base = "softfloat.o";
+#endif
+
+    /* Check local src directory first */
+    fp = fopen(sf_name, "rb");
+    if (fp) { fclose(fp); return (char *)sf_name; }
+
+    /* Check directory of executable */
+    if (strlen(progname) < 1000) {
+        strcpy(dir, progname);
+        slash = strrchr(dir, '/');
+        if (slash) {
+            *slash = '\0';
+            sprintf(path, "%s/%s", dir, sf_base);
+            fp = fopen(path, "rb");
+            if (fp) { fclose(fp); return path; }
+
+            sprintf(path, "%s/src/%s", dir, sf_base);
+            fp = fopen(path, "rb");
+            if (fp) { fclose(fp); return path; }
+
+            sprintf(path, "%s/%s", dir, sf_name);
+            fp = fopen(path, "rb");
+            if (fp) { fclose(fp); return path; }
+        }
+    }
+
+    return (char *)sf_name;
+}
+
 int main(int argc, char **argv) {
     int i;
     char *source;
@@ -258,12 +299,13 @@ int main(int argc, char **argv) {
 
     /* Full executable compilation and linking */
     {
-        char cmd[2048];
+        char cmd[4096];
         char *exe_file = g_config.output_file ? g_config.output_file : "a.out";
+        char *sf_obj = get_softfloat_obj(argv[0]);
 #ifdef TARGET_I386
-        sprintf(cmd, "gcc -m32 -no-pie -o %s %s", exe_file, asm_file);
+        sprintf(cmd, "gcc -m32 -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
         if (system(cmd) != 0) {
-            sprintf(cmd, "gcc -m32 -o %s %s", exe_file, asm_file);
+            sprintf(cmd, "gcc -m32 -o %s %s %s -lm", exe_file, asm_file, sf_obj);
             if (system(cmd) != 0) {
                 fprintf(stderr, "cc90: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);
@@ -271,10 +313,10 @@ int main(int argc, char **argv) {
             }
         }
 #else
-        sprintf(cmd, "gcc -no-pie -o %s %s", exe_file, asm_file);
+        sprintf(cmd, "gcc -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
         if (system(cmd) != 0) {
             /* Try without -no-pie */
-            sprintf(cmd, "gcc -o %s %s", exe_file, asm_file);
+            sprintf(cmd, "gcc -o %s %s %s -lm", exe_file, asm_file, sf_obj);
             if (system(cmd) != 0) {
                 fprintf(stderr, "cc90: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);

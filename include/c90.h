@@ -18,6 +18,7 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <assert.h>
+#include "softfloat.h"
 
 /* ========================================================================= */
 /* Dynamic Array / Vector & Hash Map & String Buffer Data Structures        */
@@ -165,7 +166,6 @@ typedef struct Token {
     int kind;            /* TokenKind or ASCII character */
     char *str;           /* Token lexeme string */
     long int_val;        /* Integer value for integer literals */
-    double float_val;    /* Floating-point value for float literals */
     int is_unsigned;     /* For unsigned integer constants */
     const char *filename;
     int line;
@@ -224,6 +224,7 @@ typedef enum TypeKind {
     TYPE_LONG,
     TYPE_FLOAT,
     TYPE_DOUBLE,
+    TYPE_LDOUBLE,
     TYPE_PTR,
     TYPE_ARRAY,
     TYPE_STRUCT,
@@ -280,6 +281,7 @@ extern Type *type_long;
 extern Type *type_ulong;
 extern Type *type_float;
 extern Type *type_double;
+extern Type *type_ldouble;
 
 void type_init(void);
 Type *type_new(TypeKind kind, int size, int align);
@@ -463,8 +465,8 @@ typedef struct AstNode {
 
         /* AST_FLOAT_LIT */
         struct {
-            double val;
             char *label;
+            unsigned int u128_words[4];
         } float_val;
 
         /* AST_STR_LIT */
@@ -616,7 +618,7 @@ typedef struct AstNode {
 
 AstNode *ast_new(AstKind kind, const char *filename, int line);
 AstNode *ast_int_lit(long val, int is_unsigned, Type *type, const char *file, int line);
-AstNode *ast_float_lit(double val, Type *type, const char *file, int line);
+AstNode *ast_float_lit(Type *type, const char *file, int line);
 AstNode *ast_str_lit(const char *str, int len, const char *file, int line);
 AstNode *ast_char_lit(int c, const char *file, int line);
 AstNode *ast_var(Symbol *sym, const char *file, int line);
@@ -657,6 +659,8 @@ typedef struct CodeGen {
     char *func_ret_label;
     Vector *break_stack;
     Vector *continue_stack;
+    int scratch_base;
+    int ldouble_slot;
 } CodeGen;
 
 CodeGen *codegen_new(FILE *out, AstNode *root);

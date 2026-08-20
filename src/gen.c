@@ -107,8 +107,13 @@ static void gen_load(CodeGen *gen, Type *type) {
         emit(gen, "    movq (%%rax), %%rax");
         return;
     }
-    if (type->kind == TYPE_ARRAY || type->kind == TYPE_STRUCT || type->kind == TYPE_UNION || type->kind == TYPE_FUNC) {
-        /* Array/struct/func evaluates to its base address */
+    if (type->kind == TYPE_ARRAY || type->kind == TYPE_STRUCT || type->kind == TYPE_UNION ||
+        type->kind == TYPE_FUNC || type->kind == TYPE_LDOUBLE) {
+        /* Array/struct/func/ldouble evaluates to its base address */
+        return;
+    }
+    if (type->kind == TYPE_FLOAT) {
+        emit(gen, "    movl (%%rax), %%eax");
         return;
     }
     if (type->size == 1) {
@@ -139,8 +144,8 @@ static void gen_store(CodeGen *gen, Type *type) {
         emit(gen, "    movq %%rax, (%%rcx)");
         return;
     }
-    if (type->kind == TYPE_STRUCT || type->kind == TYPE_UNION) {
-        /* Copy struct byte by byte */
+    if (type->kind == TYPE_STRUCT || type->kind == TYPE_UNION || type->kind == TYPE_LDOUBLE) {
+        /* Copy struct/union/ldouble byte by byte */
         int i;
         for (i = 0; i < type->size; i++) {
             emit(gen, "    movb %d(%%rax), %%dl", i);
@@ -205,6 +210,157 @@ static void gen_lval(CodeGen *gen, AstNode *node) {
 /* Expression Code Generation                                                */
 /* ========================================================================= */
 
+static void emit_call(CodeGen *gen, const char *func) {
+    emit(gen, "    pushq %%rbx");
+    emit(gen, "    movq %%rsp, %%rbx");
+    emit(gen, "    andq $-16, %%rsp");
+    emit(gen, "    call %s", func);
+    emit(gen, "    movq %%rbx, %%rsp");
+    emit(gen, "    popq %%rbx");
+}
+
+static int get_ldouble_temp(CodeGen *gen) {
+    int off = gen->scratch_base + (gen->ldouble_slot * 16);
+    gen->ldouble_slot = (gen->ldouble_slot + 1) % 8;
+    return off;
+}
+
+static void gen_cast_to(CodeGen *gen, Type *from, Type *to) {
+    if (!from || !to || type_equal(from, to)) return;
+
+    if (to->kind == TYPE_FLOAT) {
+        if (from->kind == TYPE_DOUBLE) {
+            emit(gen, "    movq %%rax, %%rdi");
+            emit_call(gen, "__truncdfsf2");
+        } else if (from->kind == TYPE_LDOUBLE) {
+            emit(gen, "    movq %%rax, %%rdi");
+            emit_call(gen, "__trunctfsf2");
+        } else if (from->is_unsigned) {
+            if (from->size == 8) {
+                emit(gen, "    movq %%rax, %%rdi");
+                emit_call(gen, "__floatundisf");
+            } else {
+                emit(gen, "    movl %%eax, %%edi");
+                emit_call(gen, "__floatunsisf");
+            }
+        } else {
+            if (from->size == 8) {
+                emit(gen, "    movq %%rax, %%rdi");
+                emit_call(gen, "__floatdisf");
+            } else {
+                emit(gen, "    movl %%eax, %%edi");
+                emit_call(gen, "__floatsisf");
+            }
+        }
+        return;
+    }
+
+    if (to->kind == TYPE_DOUBLE) {
+        if (from->kind == TYPE_FLOAT) {
+            emit(gen, "    movl %%eax, %%edi");
+            emit_call(gen, "__extendsfdf2");
+        } else if (from->kind == TYPE_LDOUBLE) {
+            emit(gen, "    movq %%rax, %%rdi");
+            emit_call(gen, "__trunctfdf2");
+        } else if (from->is_unsigned) {
+            if (from->size == 8) {
+                emit(gen, "    movq %%rax, %%rdi");
+                emit_call(gen, "__floatundidf");
+            } else {
+                emit(gen, "    movl %%eax, %%edi");
+                emit_call(gen, "__floatunsidf");
+            }
+        } else {
+            if (from->size == 8) {
+                emit(gen, "    movq %%rax, %%rdi");
+                emit_call(gen, "__floatdidf");
+            } else {
+                emit(gen, "    movl %%eax, %%edi");
+                emit_call(gen, "__floatsidf");
+            }
+        }
+        return;
+    }
+
+    if (to->kind == TYPE_LDOUBLE) {
+        int off = get_ldouble_temp(gen);
+        emit(gen, "    leaq -%d(%%rbp), %%rdi", off);
+        if (from->kind == TYPE_FLOAT) {
+            emit(gen, "    movl %%eax, %%esi");
+            emit_call(gen, "__extendsftf2");
+        } else if (from->kind == TYPE_DOUBLE) {
+            emit(gen, "    movq %%rax, %%rsi");
+            emit_call(gen, "__extenddftf2");
+        } else if (from->is_unsigned) {
+            if (from->size == 8) {
+                emit(gen, "    movq %%rax, %%rsi");
+                emit_call(gen, "__floatunditf");
+            } else {
+                emit(gen, "    movl %%eax, %%esi");
+                emit_call(gen, "__floatunsitf");
+            }
+        } else {
+            if (from->size == 8) {
+                emit(gen, "    movq %%rax, %%rsi");
+                emit_call(gen, "__floatditf");
+            } else {
+                emit(gen, "    movl %%eax, %%esi");
+                emit_call(gen, "__floatsitf");
+            }
+        }
+        emit(gen, "    leaq -%d(%%rbp), %%rax", off);
+        return;
+    }
+
+    if (from->kind == TYPE_FLOAT) {
+        emit(gen, "    movl %%eax, %%edi");
+        if (to->is_unsigned) {
+            if (to->size == 8) emit_call(gen, "__fixunssfdi");
+            else emit_call(gen, "__fixunssfsi");
+        } else {
+            if (to->size == 8) emit_call(gen, "__fixsfdi");
+            else emit_call(gen, "__fixsfsi");
+        }
+        return;
+    }
+
+    if (from->kind == TYPE_DOUBLE) {
+        emit(gen, "    movq %%rax, %%rdi");
+        if (to->is_unsigned) {
+            if (to->size == 8) emit_call(gen, "__fixunsdfdi");
+            else emit_call(gen, "__fixunsdfsi");
+        } else {
+            if (to->size == 8) emit_call(gen, "__fixdfdi");
+            else emit_call(gen, "__fixdfsi");
+        }
+        return;
+    }
+
+    if (from->kind == TYPE_LDOUBLE) {
+        emit(gen, "    movq %%rax, %%rdi");
+        if (to->is_unsigned) {
+            if (to->size == 8) emit_call(gen, "__fixunstfdi");
+            else emit_call(gen, "__fixunstfsi");
+        } else {
+            if (to->size == 8) emit_call(gen, "__fixtfdi");
+            else emit_call(gen, "__fixtfsi");
+        }
+        return;
+    }
+
+    /* Integer-to-integer conversion */
+    if (to->size == 1) {
+        if (to->is_unsigned) emit(gen, "    movzbq %%al, %%rax");
+        else emit(gen, "    movsbq %%al, %%rax");
+    } else if (to->size == 2) {
+        if (to->is_unsigned) emit(gen, "    movzwq %%ax, %%rax");
+        else emit(gen, "    movswq %%ax, %%rax");
+    } else if (to->size == 4) {
+        if (to->is_unsigned) emit(gen, "    movl %%eax, %%eax");
+        else emit(gen, "    movslq %%eax, %%rax");
+    }
+}
+
 static void gen_expr(CodeGen *gen, AstNode *node) {
     if (!node) return;
 
@@ -216,7 +372,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
 
         case AST_FLOAT_LIT:
             if (node->u.float_val.label) {
-                emit(gen, "    movq %s(%%rip), %%rax", node->u.float_val.label);
+                if (node->type == type_float) {
+                    emit(gen, "    movl %s(%%rip), %%eax", node->u.float_val.label);
+                } else if (node->type == type_ldouble) {
+                    emit(gen, "    leaq %s(%%rip), %%rax", node->u.float_val.label);
+                } else {
+                    emit(gen, "    movq %s(%%rip), %%rax", node->u.float_val.label);
+                }
             } else {
                 emit(gen, "    movq $0, %%rax");
             }
@@ -246,7 +408,20 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
 
         case AST_NEG:
             gen_expr(gen, node->u.unop.operand);
-            emit(gen, "    negq %%rax");
+            if (node->type && node->type->kind == TYPE_FLOAT) {
+                emit(gen, "    xorl $0x80000000, %%eax");
+            } else if (node->type && node->type->kind == TYPE_DOUBLE) {
+                emit(gen, "    movabsq $0x8000000000000000, %%rcx");
+                emit(gen, "    xorq %%rcx, %%rax");
+            } else if (node->type && node->type->kind == TYPE_LDOUBLE) {
+                int off = get_ldouble_temp(gen);
+                emit(gen, "    movq %%rax, %%rsi");
+                emit(gen, "    leaq -%d(%%rbp), %%rdi", off);
+                emit_call(gen, "__negtf2");
+                emit(gen, "    leaq -%d(%%rbp), %%rax", off);
+            } else {
+                emit(gen, "    negq %%rax");
+            }
             return;
 
         case AST_BITNOT:
@@ -263,16 +438,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
 
         case AST_CAST:
             gen_expr(gen, node->u.cast.operand);
-            if (node->type->size == 1) {
-                if (node->type->is_unsigned) emit(gen, "    movzbq %%al, %%rax");
-                else emit(gen, "    movsbq %%al, %%rax");
-            } else if (node->type->size == 2) {
-                if (node->type->is_unsigned) emit(gen, "    movzwq %%ax, %%rax");
-                else emit(gen, "    movswq %%ax, %%rax");
-            } else if (node->type->size == 4) {
-                if (node->type->is_unsigned) emit(gen, "    movl %%eax, %%eax");
-                else emit(gen, "    movslq %%eax, %%rax");
-            }
+            gen_cast_to(gen, node->u.cast.operand->type, node->type);
             return;
 
         case AST_PRE_INC:
@@ -321,6 +487,10 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             gen_lval(gen, node->u.binop.lhs);
             emit(gen, "    pushq %%rax");
             gen_expr(gen, node->u.binop.rhs);
+            if (node->u.binop.lhs->type && node->u.binop.rhs->type &&
+                !type_equal(node->u.binop.lhs->type, node->u.binop.rhs->type)) {
+                gen_cast_to(gen, node->u.binop.rhs->type, node->u.binop.lhs->type);
+            }
             emit(gen, "    popq %%rcx");
             gen_store(gen, node->type);
             return;
@@ -554,11 +724,85 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
     {
         AstNode *lhs = node->u.binop.lhs;
         AstNode *rhs = node->u.binop.rhs;
-        int is_ptr_lhs = type_is_pointer(lhs->type);
-        int is_ptr_rhs = type_is_pointer(rhs->type);
-        int is_unsigned = (node->type && node->type->is_unsigned) ||
-                          (lhs->type && lhs->type->is_unsigned) ||
-                          (rhs->type && rhs->type->is_unsigned);
+        Type *common_type = type_max(lhs->type, rhs->type);
+        int is_ptr_lhs, is_ptr_rhs, is_unsigned;
+
+        if (common_type && type_is_floating(common_type)) {
+            gen_expr(gen, lhs);
+            if (!type_equal(lhs->type, common_type)) {
+                gen_cast_to(gen, lhs->type, common_type);
+            }
+            emit(gen, "    pushq %%rax");
+            gen_expr(gen, rhs);
+            if (!type_equal(rhs->type, common_type)) {
+                gen_cast_to(gen, rhs->type, common_type);
+            }
+            emit(gen, "    movq %%rax, %%rsi");
+            emit(gen, "    popq %%rdi");
+
+            if (common_type->kind == TYPE_FLOAT) {
+                switch (node->kind) {
+                    case AST_ADD: emit_call(gen, "__addsf3"); break;
+                    case AST_SUB: emit_call(gen, "__subsf3"); break;
+                    case AST_MUL: emit_call(gen, "__mulsf3"); break;
+                    case AST_DIV: emit_call(gen, "__divsf3"); break;
+                    case AST_EQ: emit_call(gen, "__eqsf2"); emit(gen, "    testl %%eax, %%eax; sete %%al; movzbq %%al, %%rax"); break;
+                    case AST_NE: emit_call(gen, "__nesf2"); emit(gen, "    testl %%eax, %%eax; setne %%al; movzbq %%al, %%rax"); break;
+                    case AST_LT: emit_call(gen, "__ltsf2"); emit(gen, "    testl %%eax, %%eax; setl %%al; movzbq %%al, %%rax"); break;
+                    case AST_LE: emit_call(gen, "__lesf2"); emit(gen, "    testl %%eax, %%eax; setle %%al; movzbq %%al, %%rax"); break;
+                    case AST_GT: emit_call(gen, "__gtsf2"); emit(gen, "    testl %%eax, %%eax; setg %%al; movzbq %%al, %%rax"); break;
+                    case AST_GE: emit_call(gen, "__gesf2"); emit(gen, "    testl %%eax, %%eax; setge %%al; movzbq %%al, %%rax"); break;
+                    default: break;
+                }
+            } else if (common_type->kind == TYPE_DOUBLE) {
+                switch (node->kind) {
+                    case AST_ADD: emit_call(gen, "__adddf3"); break;
+                    case AST_SUB: emit_call(gen, "__subdf3"); break;
+                    case AST_MUL: emit_call(gen, "__muldf3"); break;
+                    case AST_DIV: emit_call(gen, "__divdf3"); break;
+                    case AST_EQ: emit_call(gen, "__eqdf2"); emit(gen, "    testl %%eax, %%eax; sete %%al; movzbq %%al, %%rax"); break;
+                    case AST_NE: emit_call(gen, "__nedf2"); emit(gen, "    testl %%eax, %%eax; setne %%al; movzbq %%al, %%rax"); break;
+                    case AST_LT: emit_call(gen, "__ltdf2"); emit(gen, "    testl %%eax, %%eax; setl %%al; movzbq %%al, %%rax"); break;
+                    case AST_LE: emit_call(gen, "__ledf2"); emit(gen, "    testl %%eax, %%eax; setle %%al; movzbq %%al, %%rax"); break;
+                    case AST_GT: emit_call(gen, "__gtdf2"); emit(gen, "    testl %%eax, %%eax; setg %%al; movzbq %%al, %%rax"); break;
+                    case AST_GE: emit_call(gen, "__gedf2"); emit(gen, "    testl %%eax, %%eax; setge %%al; movzbq %%al, %%rax"); break;
+                    default: break;
+                }
+            } else if (common_type->kind == TYPE_LDOUBLE) {
+                if (node->kind == AST_EQ || node->kind == AST_NE || node->kind == AST_LT ||
+                    node->kind == AST_LE || node->kind == AST_GT || node->kind == AST_GE) {
+                    switch (node->kind) {
+                        case AST_EQ: emit_call(gen, "__eqtf2"); emit(gen, "    testl %%eax, %%eax; sete %%al; movzbq %%al, %%rax"); break;
+                        case AST_NE: emit_call(gen, "__netf2"); emit(gen, "    testl %%eax, %%eax; setne %%al; movzbq %%al, %%rax"); break;
+                        case AST_LT: emit_call(gen, "__lttf2"); emit(gen, "    testl %%eax, %%eax; setl %%al; movzbq %%al, %%rax"); break;
+                        case AST_LE: emit_call(gen, "__letf2"); emit(gen, "    testl %%eax, %%eax; setle %%al; movzbq %%al, %%rax"); break;
+                        case AST_GT: emit_call(gen, "__gttf2"); emit(gen, "    testl %%eax, %%eax; setg %%al; movzbq %%al, %%rax"); break;
+                        case AST_GE: emit_call(gen, "__getf2"); emit(gen, "    testl %%eax, %%eax; setge %%al; movzbq %%al, %%rax"); break;
+                        default: break;
+                    }
+                } else {
+                    int off = get_ldouble_temp(gen);
+                    emit(gen, "    movq %%rsi, %%rdx"); /* rhs */
+                    emit(gen, "    movq %%rdi, %%rsi"); /* lhs */
+                    emit(gen, "    leaq -%d(%%rbp), %%rdi", off); /* res */
+                    switch (node->kind) {
+                        case AST_ADD: emit_call(gen, "__addtf3"); break;
+                        case AST_SUB: emit_call(gen, "__subtf3"); break;
+                        case AST_MUL: emit_call(gen, "__multf3"); break;
+                        case AST_DIV: emit_call(gen, "__divtf3"); break;
+                        default: break;
+                    }
+                    emit(gen, "    leaq -%d(%%rbp), %%rax", off);
+                }
+            }
+            return;
+        }
+
+        is_ptr_lhs = type_is_pointer(lhs->type);
+        is_ptr_rhs = type_is_pointer(rhs->type);
+        is_unsigned = (node->type && node->type->is_unsigned) ||
+                      (lhs->type && lhs->type->is_unsigned) ||
+                      (rhs->type && rhs->type->is_unsigned);
 
         gen_expr(gen, lhs);
         emit(gen, "    pushq %%rax");
@@ -974,9 +1218,17 @@ static void gen_global_init(CodeGen *gen, Initializer *init, Type *type) {
             else if (type->size == 4) emit(gen, "    .long %ld", e->u.int_val.val);
             else emit(gen, "    .quad %ld", e->u.int_val.val);
         } else if (e->kind == AST_FLOAT_LIT) {
-            union { double d; unsigned long u; } conv;
-            conv.d = e->u.float_val.val;
-            emit(gen, "    .quad %lu", conv.u);
+            if (type && type->kind == TYPE_FLOAT) {
+                emit(gen, "    .long %u", e->u.float_val.u128_words[0]);
+            } else if (type && type->kind == TYPE_LDOUBLE) {
+                emit(gen, "    .long %u", e->u.float_val.u128_words[0]);
+                emit(gen, "    .long %u", e->u.float_val.u128_words[1]);
+                emit(gen, "    .long %u", e->u.float_val.u128_words[2]);
+                emit(gen, "    .long %u", e->u.float_val.u128_words[3]);
+            } else {
+                emit(gen, "    .long %u", e->u.float_val.u128_words[0]);
+                emit(gen, "    .long %u", e->u.float_val.u128_words[1]);
+            }
         } else if (e->kind == AST_STR_LIT) {
             emit(gen, "    .quad %s", e->u.str_val.label);
         } else if (e->kind == AST_ADDR && e->u.unop.operand->kind == AST_VAR) {
@@ -1034,10 +1286,18 @@ static void gen_rodata(CodeGen *gen, Vector *strings, Vector *floats) {
     if (floats) {
         for (i = 0; i < floats->size; i++) {
             AstNode *f = (AstNode *)vec_get(floats, i);
-            union { double d; unsigned long u; } conv;
-            conv.d = f->u.float_val.val;
             emit(gen, "%s:", f->u.float_val.label);
-            emit(gen, "    .quad %lu", conv.u);
+            if (f->type == type_float) {
+                emit(gen, "    .long %u", f->u.float_val.u128_words[0]);
+            } else if (f->type == type_ldouble) {
+                emit(gen, "    .long %u", f->u.float_val.u128_words[0]);
+                emit(gen, "    .long %u", f->u.float_val.u128_words[1]);
+                emit(gen, "    .long %u", f->u.float_val.u128_words[2]);
+                emit(gen, "    .long %u", f->u.float_val.u128_words[3]);
+            } else {
+                emit(gen, "    .long %u", f->u.float_val.u128_words[0]);
+                emit(gen, "    .long %u", f->u.float_val.u128_words[1]);
+            }
         }
     }
 }
@@ -1053,6 +1313,8 @@ static void gen_func_def(CodeGen *gen, AstNode *func_node) {
     int i;
 
     gen->func_ret_label = gen_asm_label(gen, "ret");
+    gen->scratch_base = (stack_size > 128) ? (stack_size - 128 + 16) : 16;
+    gen->ldouble_slot = 0;
 
     emit(gen, "    .text");
     if (sym->storage != STORAGE_STATIC) {

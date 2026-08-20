@@ -4,6 +4,7 @@
  */
 
 #include "../include/c90.h"
+#include "../include/softfloat.h"
 
 /* Forward declarations */
 static AstNode *parse_expr(Parser *p);
@@ -36,11 +37,14 @@ AstNode *ast_int_lit(long val, int is_unsigned, Type *type, const char *file, in
     return n;
 }
 
-AstNode *ast_float_lit(double val, Type *type, const char *file, int line) {
+AstNode *ast_float_lit(Type *type, const char *file, int line) {
     AstNode *n = ast_new(AST_FLOAT_LIT, file, line);
     n->type = type ? type : type_double;
-    n->u.float_val.val = val;
     n->u.float_val.label = NULL;
+    n->u.float_val.u128_words[0] = 0;
+    n->u.float_val.u128_words[1] = 0;
+    n->u.float_val.u128_words[2] = 0;
+    n->u.float_val.u128_words[3] = 0;
     return n;
 }
 
@@ -264,28 +268,38 @@ static AstNode *parse_primary(Parser *p) {
     if (!tok) return NULL;
 
     if (tok->kind == TOK_INT_LIT) {
+        Token *t_tok = next(p);
         Type *t;
-        next(p);
-        if (tok->is_unsigned) {
-            t = ((unsigned long)tok->int_val > 4294967295UL) ? type_ulong : type_uint;
+        if (t_tok->is_unsigned) {
+            t = ((unsigned long)t_tok->int_val > 4294967295UL) ? type_ulong : type_uint;
         } else {
-            t = (tok->int_val > 2147483647L || tok->int_val < -2147483648L) ? type_long : type_int;
+            t = (t_tok->int_val > 2147483647L || t_tok->int_val < (-2147483647L - 1L)) ? type_long : type_int;
         }
-        return ast_int_lit(tok->int_val, tok->is_unsigned, t, tok->filename, tok->line);
+        return ast_int_lit(t_tok->int_val, t_tok->is_unsigned, t, t_tok->filename, t_tok->line);
     }
 
     if (tok->kind == TOK_FLOAT_LIT) {
+        Token *f_tok = next(p);
         AstNode *node;
-        next(p);
-        node = ast_float_lit(tok->float_val, type_double, tok->filename, tok->line);
+        Type *t = type_double;
+        if (f_tok->is_unsigned == 1) t = type_float;
+        else if (f_tok->is_unsigned == 2) t = type_ldouble;
+        node = ast_float_lit(t, f_tok->filename, f_tok->line);
         node->u.float_val.label = gen_label(p, "flt");
+        if (t == type_float) {
+            soft_strto_f32(f_tok->str, &node->u.float_val.u128_words[0]);
+        } else if (t == type_ldouble) {
+            soft_strto_f128(f_tok->str, (soft_f128 *)node->u.float_val.u128_words);
+        } else {
+            soft_strto_f64(f_tok->str, (void *)&node->u.float_val.u128_words[0]);
+        }
         vec_push(p->floats, node);
         return node;
     }
 
     if (tok->kind == TOK_CHAR_LIT) {
-        next(p);
-        return ast_char_lit((int)tok->int_val, tok->filename, tok->line);
+        Token *c_tok = next(p);
+        return ast_char_lit((int)c_tok->int_val, c_tok->filename, c_tok->line);
     }
 
     if (tok->kind == TOK_STR_LIT) {
@@ -366,6 +380,22 @@ static AstNode *parse_postfix(Parser *p) {
                 }
             }
             expect(p, ')');
+            if (node->type) {
+                Type *ft = node->type;
+                if (ft->kind == TYPE_PTR && ft->base && ft->base->kind == TYPE_FUNC) {
+                    ft = ft->base;
+                }
+                if (ft->kind == TYPE_FUNC && ft->params) {
+                    int i;
+                    for (i = 0; i < args->size && i < ft->params->size; i++) {
+                        Param *param = (Param *)vec_get(ft->params, i);
+                        AstNode *arg = (AstNode *)vec_get(args, i);
+                        if (param->type && arg->type && (type_is_floating(param->type) || type_is_floating(arg->type)) && !type_equal(param->type, arg->type)) {
+                            args->data[i] = ast_cast(param->type, arg, tok->filename, tok->line);
+                        }
+                    }
+                }
+            }
             node = ast_call(node, args, tok->filename, tok->line);
         } else if (tok->kind == '.') {
             Token *id_tok;
@@ -635,8 +665,13 @@ static AstNode *parse_assignment(Parser *p) {
     if (!tok) return lhs;
 
     if (tok->kind == '=') {
+        AstNode *rhs;
         next(p);
-        return ast_binary(AST_ASSIGN, lhs, parse_assignment(p), tok->filename, tok->line);
+        rhs = parse_assignment(p);
+        if (lhs->type && rhs->type && (type_is_floating(lhs->type) || type_is_floating(rhs->type)) && !type_equal(lhs->type, rhs->type)) {
+            rhs = ast_cast(lhs->type, rhs, tok->filename, tok->line);
+        }
+        return ast_binary(AST_ASSIGN, lhs, rhs, tok->filename, tok->line);
     }
     if (tok->kind == TOK_ADD_ASSIGN) {
         next(p);
@@ -907,8 +942,12 @@ static Type *parse_decl_specifiers(Parser *p, StorageClass *storage) {
             }
             next(p);
         } else if (tok->kind == TOK_LONG) {
-            is_long = 1;
-            type = is_unsigned ? type_ulong : type_long;
+            if (type == type_double) {
+                type = type_ldouble;
+            } else {
+                is_long = 1;
+                type = is_unsigned ? type_ulong : type_long;
+            }
             next(p);
         } else if (tok->kind == TOK_SIGNED) {
             is_unsigned = 0;
@@ -924,7 +963,11 @@ static Type *parse_decl_specifiers(Parser *p, StorageClass *storage) {
             type = type_float;
             next(p);
         } else if (tok->kind == TOK_DOUBLE) {
-            type = type_double;
+            if (is_long || type == type_long) {
+                type = type_ldouble;
+            } else {
+                type = type_double;
+            }
             next(p);
         } else if (tok->kind == TOK_ATTRIBUTE) {
             skip_attribute(p);
@@ -1109,6 +1152,9 @@ static Initializer *parse_initializer(Parser *p, Type *type) {
         expect(p, '}');
     } else {
         init->expr = parse_assignment(p);
+        if (init->expr && type && (type_is_floating(type) || type_is_floating(init->expr->type)) && !type_equal(type, init->expr->type)) {
+            init->expr = ast_cast(type, init->expr, p->current ? p->current->filename : NULL, p->current ? p->current->line : 0);
+        }
     }
     return init;
 }
@@ -1258,6 +1304,12 @@ static AstNode *parse_stmt(Parser *p) {
         next(p);
         if (peek(p) && peek(p)->kind != ';') {
             node->u.return_stmt.expr = parse_expr(p);
+            if (p->current_func && p->current_func->type && p->current_func->type->base &&
+                node->u.return_stmt.expr && node->u.return_stmt.expr->type &&
+                (type_is_floating(p->current_func->type->base) || type_is_floating(node->u.return_stmt.expr->type)) &&
+                !type_equal(p->current_func->type->base, node->u.return_stmt.expr->type)) {
+                node->u.return_stmt.expr = ast_cast(p->current_func->type->base, node->u.return_stmt.expr, tok->filename, tok->line);
+            }
         } else {
             node->u.return_stmt.expr = NULL;
         }
@@ -1488,7 +1540,7 @@ AstNode *parser_parse(Parser *p) {
 #endif
 
             func_node->u.func_def.body = parse_compound_stmt(p);
-            func_node->u.func_def.stack_size = (p->current_stack_offset + 15) & ~15; /* 16-byte align */
+            func_node->u.func_def.stack_size = (p->current_stack_offset + 128 + 15) & ~15; /* 16-byte align */
 
             scope_exit();
             p->current_func = NULL;

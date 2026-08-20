@@ -25,6 +25,7 @@ TESTS=(
     "test_functions"
     "test_preprocessor"
     "test_libc"
+    "test_float"
     "test_comprehensive"
 )
 

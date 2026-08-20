@@ -28,7 +28,7 @@ INCLUDES_X86_64 = -Iinclude $(SYS_INCLUDES_X86_64)
 INCLUDES_I386 = -Iinclude $(SYS_INCLUDES_I386)
 
 # x86_64 Sources & Target
-SRCS_X86_64 = src/main.c src/util.c src/lex.c src/cpp.c src/type.c src/sym.c src/parse.c src/gen.c
+SRCS_X86_64 = src/main.c src/util.c src/lex.c src/cpp.c src/type.c src/sym.c src/parse.c src/gen.c src/softfloat.c
 OBJS_X86_64 = $(SRCS_X86_64:.c=.o)
 TARGET_X86_64 = cc90
 
@@ -38,7 +38,7 @@ STAGE3_OBJS = $(SRCS_X86_64:.c=.stage3.o)
 STAGE3_TARGET = cc90_stage3
 
 # i386 (x86 32-bit) Sources & Target
-SRCS_I386 = src/main.c src/util.c src/lex.c src/cpp.c src/type.c src/sym.c src/parse.c src/gen_i386.c
+SRCS_I386 = src/main.c src/util.c src/lex.c src/cpp.c src/type.c src/sym.c src/parse.c src/gen_i386.c src/softfloat.c
 OBJS_I386 = $(SRCS_I386:.c=.i386.o)
 TARGET_I386 = cc90-i386
 
@@ -47,7 +47,7 @@ STAGE2_I386_TARGET = cc90-i386_stage2
 STAGE3_I386_OBJS = $(SRCS_I386:.c=.i386_s3.o)
 STAGE3_I386_TARGET = cc90-i386_stage3
 
-all: $(TARGET_X86_64) $(TARGET_I386)
+all: $(TARGET_X86_64) $(TARGET_I386) src/softfloat.o
 
 # -----------------------------------------------------------------------------
 # x86_64 Build & Bootstrap Targets
@@ -90,10 +90,10 @@ bootstrap: self
 # -----------------------------------------------------------------------------
 
 $(TARGET_I386): $(OBJS_I386)
-	$(CC) $(CFLAGS) -DTARGET_I386 -o $@ $(OBJS_I386)
+	$(CC) $(CFLAGS) -m32  -DTARGET_I386 -o $@ $(OBJS_I386)
 
 %.i386.o: %.c
-	$(CC) $(CFLAGS) -DTARGET_I386 -c -o $@ $<
+	$(CC) $(CFLAGS) -m32  -DTARGET_I386 -c -o $@ $<
 
 # Stage 2 (i386): Built using Stage 1 cc90-i386
 %.i386_s2.o: %.c $(TARGET_I386)
