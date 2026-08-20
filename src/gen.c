@@ -1353,6 +1353,11 @@ static void gen_global_init(CodeGen *gen, Initializer *init, Type *type) {
         }
     } else if (init->expr) {
         AstNode *e = init->expr;
+        while (e && e->kind == AST_CAST) e = e->u.cast.operand;
+        if (!e) {
+            emit(gen, "    .zero %d", type->size);
+            return;
+        }
         if (e->kind == AST_INT_LIT || e->kind == AST_CHAR_LIT) {
             if (type->size == 1) emit(gen, "    .byte %ld", e->u.int_val.val);
             else if (type->size == 2) emit(gen, "    .value %ld", e->u.int_val.val);
@@ -1372,10 +1377,18 @@ static void gen_global_init(CodeGen *gen, Initializer *init, Type *type) {
             }
         } else if (e->kind == AST_STR_LIT) {
             emit(gen, "    .quad %s", e->u.str_val.label);
+        } else if (e->kind == AST_VAR) {
+            const char *name = e->u.sym->asm_label ? e->u.sym->asm_label : e->u.sym->name;
+            emit(gen, "    .quad %s", name);
         } else if (e->kind == AST_ADDR && e->u.unop.operand->kind == AST_VAR) {
-            emit(gen, "    .quad %s", e->u.unop.operand->u.sym->name);
+            const char *name = e->u.unop.operand->u.sym->asm_label ? e->u.unop.operand->u.sym->asm_label : e->u.unop.operand->u.sym->name;
+            emit(gen, "    .quad %s", name);
         } else {
-            emit(gen, "    .zero %d", type->size);
+            long val = eval_const_expr(e);
+            if (type->size == 1) emit(gen, "    .byte %ld", val);
+            else if (type->size == 2) emit(gen, "    .value %ld", val);
+            else if (type->size == 4) emit(gen, "    .long %ld", val);
+            else emit(gen, "    .quad %ld", val);
         }
     }
 }

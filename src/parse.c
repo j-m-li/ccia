@@ -322,7 +322,19 @@ static AstNode *parse_primary(Parser *p) {
     }
 
     if (tok->kind == TOK_IDENT) {
-        Symbol *sym = scope_lookup(tok->str);
+        Symbol *sym;
+        if (strcmp(tok->str, "__func__") == 0 ||
+            strcmp(tok->str, "__FUNCTION__") == 0 ||
+            strcmp(tok->str, "__PRETTY_FUNCTION__") == 0) {
+            const char *fname = p->current_func ? p->current_func->name : "";
+            AstNode *node = ast_str_lit(fname, (int)strlen(fname), tok->filename, tok->line);
+            node->u.str_val.label = gen_label(p, "str");
+            vec_push(p->strings, node);
+            next(p);
+            return node;
+        }
+
+        sym = scope_lookup(tok->str);
         next(p);
         if (!sym) {
             /* Implicit function declaration */
@@ -339,6 +351,11 @@ static AstNode *parse_primary(Parser *p) {
             return ast_int_lit(sym->enum_value, 0, type_int, tok->filename, tok->line);
         }
         return ast_var(sym, tok->filename, tok->line);
+    }
+
+    if (tok->kind == TOK_EXTENSION) {
+        next(p);
+        return parse_primary(p);
     }
 
     if (tok->kind == '(') {
@@ -917,8 +934,17 @@ long eval_const_expr(AstNode *n) {
             return eval_const_expr(n->u.binop.lhs) > eval_const_expr(n->u.binop.rhs);
         case AST_GE:
             return eval_const_expr(n->u.binop.lhs) >= eval_const_expr(n->u.binop.rhs);
+        case AST_LOGAND:
+            return eval_const_expr(n->u.binop.lhs) && eval_const_expr(n->u.binop.rhs);
+        case AST_LOGOR:
+            return eval_const_expr(n->u.binop.lhs) || eval_const_expr(n->u.binop.rhs);
         case AST_COND:
             return eval_const_expr(n->u.cond.cond) ? eval_const_expr(n->u.cond.then_expr) : eval_const_expr(n->u.cond.else_expr);
+        case AST_CAST:
+            return eval_const_expr(n->u.cast.operand);
+        case AST_VAR:
+            if (n->u.sym && n->u.sym->kind == SYM_ENUM_CONST) return n->u.sym->enum_value;
+            return 0;
         default:
             return 0;
     }
@@ -1024,7 +1050,7 @@ static Type *parse_decl_specifiers(Parser *p, StorageClass *storage) {
             next(p);
         } else if (tok->kind == TOK_ATTRIBUTE) {
             skip_attribute(p);
-        } else if (tok->kind == TOK_EXTENSION || tok->kind == TOK_INLINE || tok->kind == TOK_RESTRICT) {
+        } else if (tok->kind == TOK_EXTENSION || tok->kind == TOK_INLINE || tok->kind == TOK_RESTRICT || tok->kind == TOK_THREAD) {
             next(p);
         } else if (tok->kind == TOK_ASM) {
             next(p);

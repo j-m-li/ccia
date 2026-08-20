@@ -29,6 +29,7 @@ TESTS=(
     "test_bitfields"
     "test_precedence"
     "test_comprehensive"
+    "test_stb_image"
 )
 
 PASSED=0

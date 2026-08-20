@@ -134,6 +134,7 @@ typedef enum TokenKind {
     TOK_BUILTIN_VA_LIST,
     TOK_COMPLEX,
     TOK_BOOL,
+    TOK_THREAD,
 
     /* Multi-character operators and punctuators */
     TOK_ARROW,       /* -> */
@@ -170,6 +171,7 @@ typedef struct Token {
     const char *filename;
     int line;
     int col;
+    Vector *hideset;
     struct Token *next;
 } Token;
 

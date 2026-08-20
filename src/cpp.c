@@ -48,6 +48,7 @@ Preprocessor *cpp_new(void) {
     /* Predefine standard C90 macros */
 #ifdef TARGET_I386
     cpp_define_macro(cpp, "__STDC__", "1");
+    cpp_define_macro(cpp, "__STRICT_ANSI__", "1");
     cpp_define_macro(cpp, "__WORDSIZE", "32");
     cpp_define_macro(cpp, "__i386", "1");
     cpp_define_macro(cpp, "__i386__", "1");
@@ -64,8 +65,52 @@ Preprocessor *cpp_new(void) {
     cpp_define_macro(cpp, "__CC90__", "1");
     cpp_define_macro(cpp, "__CC90_I386__", "1");
     cpp_define_macro(cpp, "__CC90_VERSION__", "\"1.0.0\"");
+    cpp_define_macro(cpp, "__SIZE_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__PTRDIFF_TYPE__", "int");
+    cpp_define_macro(cpp, "__INTPTR_TYPE__", "int");
+    cpp_define_macro(cpp, "__UINTPTR_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__INT8_TYPE__", "signed char");
+    cpp_define_macro(cpp, "__INT16_TYPE__", "short");
+    cpp_define_macro(cpp, "__INT32_TYPE__", "int");
+    cpp_define_macro(cpp, "__INT64_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINT8_TYPE__", "unsigned char");
+    cpp_define_macro(cpp, "__UINT16_TYPE__", "unsigned short");
+    cpp_define_macro(cpp, "__UINT32_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__UINT64_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__INT_LEAST8_TYPE__", "signed char");
+    cpp_define_macro(cpp, "__INT_LEAST16_TYPE__", "short");
+    cpp_define_macro(cpp, "__INT_LEAST32_TYPE__", "int");
+    cpp_define_macro(cpp, "__INT_LEAST64_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINT_LEAST8_TYPE__", "unsigned char");
+    cpp_define_macro(cpp, "__UINT_LEAST16_TYPE__", "unsigned short");
+    cpp_define_macro(cpp, "__UINT_LEAST32_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__UINT_LEAST64_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__INT_FAST8_TYPE__", "signed char");
+    cpp_define_macro(cpp, "__INT_FAST16_TYPE__", "int");
+    cpp_define_macro(cpp, "__INT_FAST32_TYPE__", "int");
+    cpp_define_macro(cpp, "__INT_FAST64_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINT_FAST8_TYPE__", "unsigned char");
+    cpp_define_macro(cpp, "__UINT_FAST16_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__UINT_FAST32_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__UINT_FAST64_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__INTMAX_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINTMAX_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__WCHAR_TYPE__", "long");
+    cpp_define_macro(cpp, "__WINT_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__CHAR_BIT__", "8");
+    cpp_define_macro(cpp, "__SCHAR_MAX__", "127");
+    cpp_define_macro(cpp, "__SHRT_MAX__", "32767");
+    cpp_define_macro(cpp, "__INT_MAX__", "2147483647");
+    cpp_define_macro(cpp, "__LONG_MAX__", "2147483647L");
+    cpp_define_macro(cpp, "__LONG_LONG_MAX__", "2147483647L");
+    cpp_define_macro(cpp, "__SIZE_MAX__", "4294967295U");
+    cpp_define_macro(cpp, "__PTRDIFF_MAX__", "2147483647");
+    cpp_define_macro(cpp, "__INTPTR_MAX__", "2147483647");
+    cpp_define_macro(cpp, "__UINTPTR_MAX__", "4294967295U");
+    cpp_define_macro(cpp, "STBI_NO_SIMD", "1");
 #else
     cpp_define_macro(cpp, "__STDC__", "1");
+    cpp_define_macro(cpp, "__STRICT_ANSI__", "1");
     cpp_define_macro(cpp, "__WORDSIZE", "64");
     cpp_define_macro(cpp, "__WORDSIZE_TIME64_COMPAT32", "1");
     cpp_define_macro(cpp, "__SYSCALL_WORDSIZE", "64");
@@ -82,6 +127,49 @@ Preprocessor *cpp_new(void) {
     cpp_define_macro(cpp, "__GNUC_PATCHLEVEL__", "0");
     cpp_define_macro(cpp, "__CC90__", "1");
     cpp_define_macro(cpp, "__CC90_VERSION__", "\"1.0.0\"");
+    cpp_define_macro(cpp, "__SIZE_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__PTRDIFF_TYPE__", "long");
+    cpp_define_macro(cpp, "__INTPTR_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINTPTR_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__INT8_TYPE__", "signed char");
+    cpp_define_macro(cpp, "__INT16_TYPE__", "short");
+    cpp_define_macro(cpp, "__INT32_TYPE__", "int");
+    cpp_define_macro(cpp, "__INT64_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINT8_TYPE__", "unsigned char");
+    cpp_define_macro(cpp, "__UINT16_TYPE__", "unsigned short");
+    cpp_define_macro(cpp, "__UINT32_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__UINT64_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__INT_LEAST8_TYPE__", "signed char");
+    cpp_define_macro(cpp, "__INT_LEAST16_TYPE__", "short");
+    cpp_define_macro(cpp, "__INT_LEAST32_TYPE__", "int");
+    cpp_define_macro(cpp, "__INT_LEAST64_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINT_LEAST8_TYPE__", "unsigned char");
+    cpp_define_macro(cpp, "__UINT_LEAST16_TYPE__", "unsigned short");
+    cpp_define_macro(cpp, "__UINT_LEAST32_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__UINT_LEAST64_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__INT_FAST8_TYPE__", "signed char");
+    cpp_define_macro(cpp, "__INT_FAST16_TYPE__", "long");
+    cpp_define_macro(cpp, "__INT_FAST32_TYPE__", "long");
+    cpp_define_macro(cpp, "__INT_FAST64_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINT_FAST8_TYPE__", "unsigned char");
+    cpp_define_macro(cpp, "__UINT_FAST16_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__UINT_FAST32_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__UINT_FAST64_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__INTMAX_TYPE__", "long");
+    cpp_define_macro(cpp, "__UINTMAX_TYPE__", "unsigned long");
+    cpp_define_macro(cpp, "__WCHAR_TYPE__", "int");
+    cpp_define_macro(cpp, "__WINT_TYPE__", "unsigned int");
+    cpp_define_macro(cpp, "__CHAR_BIT__", "8");
+    cpp_define_macro(cpp, "__SCHAR_MAX__", "127");
+    cpp_define_macro(cpp, "__SHRT_MAX__", "32767");
+    cpp_define_macro(cpp, "__INT_MAX__", "2147483647");
+    cpp_define_macro(cpp, "__LONG_MAX__", "9223372036854775807L");
+    cpp_define_macro(cpp, "__LONG_LONG_MAX__", "9223372036854775807L");
+    cpp_define_macro(cpp, "__SIZE_MAX__", "18446744073709551615UL");
+    cpp_define_macro(cpp, "__PTRDIFF_MAX__", "9223372036854775807L");
+    cpp_define_macro(cpp, "__INTPTR_MAX__", "9223372036854775807L");
+    cpp_define_macro(cpp, "__UINTPTR_MAX__", "18446744073709551615UL");
+    cpp_define_macro(cpp, "STBI_NO_SIMD", "1");
 #endif
 
     return cpp;
@@ -126,19 +214,137 @@ static Token *clone_token(Token *t) {
     tok->filename = t->filename ? c90_strdup(t->filename) : NULL;
     tok->line = t->line;
     tok->col = t->col;
+    tok->hideset = NULL;
+    if (t->hideset) {
+        int i;
+        tok->hideset = vec_new();
+        for (i = 0; i < t->hideset->size; i++) {
+            vec_push(tok->hideset, c90_strdup((char *)vec_get(t->hideset, i)));
+        }
+    }
     tok->next = NULL;
     return tok;
+}
+
+static int hideset_contains(Vector *hs, const char *name) {
+    int i;
+    if (!hs || !name) return 0;
+    for (i = 0; i < hs->size; i++) {
+        char *n = (char *)vec_get(hs, i);
+        if (n && strcmp(n, name) == 0) return 1;
+    }
+    return 0;
+}
+
+static void hideset_add(Vector **phs, const char *name) {
+    if (!name) return;
+    if (!*phs) *phs = vec_new();
+    if (!hideset_contains(*phs, name)) {
+        vec_push(*phs, c90_strdup(name));
+    }
 }
 
 /* ========================================================================= */
 /* Macro Expansion & Parameter Substitution                                  */
 /* ========================================================================= */
 
+static Vector *expand_macro(Preprocessor *cpp, Macro *m, Vector *args);
+
+static Vector *expand_token_vector(Preprocessor *cpp, Vector *tokens) {
+    Vector *out = vec_new();
+    Token *cur;
+    int k;
+    if (!tokens || tokens->size == 0) return out;
+
+    for (k = 0; k < tokens->size - 1; k++) {
+        Token *t1 = (Token *)vec_get(tokens, k);
+        Token *t2 = (Token *)vec_get(tokens, k + 1);
+        t1->next = t2;
+    }
+    ((Token *)vec_get(tokens, tokens->size - 1))->next = NULL;
+    cur = (Token *)vec_get(tokens, 0);
+
+    while (cur && cur->kind != TOK_EOF) {
+        Macro *m = NULL;
+        if (cur->kind == TOK_IDENT && !hideset_contains(cur->hideset, cur->str)) {
+            m = (Macro *)map_get(cpp->macros, cur->str);
+        }
+        if (m) {
+            if (!m->is_function_like) {
+                Vector *exp = expand_macro(cpp, m, NULL);
+                Token *next_tok = cur->next;
+                if (exp->size > 0) {
+                    for (k = 0; k < exp->size - 1; k++) {
+                        ((Token *)vec_get(exp, k))->next = (Token *)vec_get(exp, k + 1);
+                    }
+                    ((Token *)vec_get(exp, exp->size - 1))->next = next_tok;
+                    cur = (Token *)vec_get(exp, 0);
+                } else {
+                    cur = next_tok;
+                }
+                vec_free(exp);
+                continue;
+            } else if (cur->next && cur->next->kind == '(') {
+                Vector *macro_args = vec_new();
+                Vector *cur_arg = vec_new();
+                int paren_depth = 0;
+                cur = cur->next->next; /* skip ident and '(' */
+                while (cur && cur->kind != TOK_EOF) {
+                    if (cur->kind == '(') {
+                        paren_depth++;
+                        vec_push(cur_arg, clone_token(cur));
+                    } else if (cur->kind == ')') {
+                        if (paren_depth == 0) {
+                            vec_push(macro_args, cur_arg);
+                            cur = cur->next;
+                            break;
+                        }
+                        paren_depth--;
+                        vec_push(cur_arg, clone_token(cur));
+                    } else if (cur->kind == ',' && paren_depth == 0) {
+                        vec_push(macro_args, cur_arg);
+                        cur_arg = vec_new();
+                    } else {
+                        vec_push(cur_arg, clone_token(cur));
+                    }
+                    cur = cur->next;
+                }
+                {
+                    Vector *exp = expand_macro(cpp, m, macro_args);
+                    Token *next_tok = cur;
+                    if (exp->size > 0) {
+                        for (k = 0; k < exp->size - 1; k++) {
+                            ((Token *)vec_get(exp, k))->next = (Token *)vec_get(exp, k + 1);
+                        }
+                        ((Token *)vec_get(exp, exp->size - 1))->next = next_tok;
+                        cur = (Token *)vec_get(exp, 0);
+                    } else {
+                        cur = next_tok;
+                    }
+                    vec_free(exp);
+                }
+                continue;
+            }
+        }
+        vec_push(out, clone_token(cur));
+        cur = cur->next;
+    }
+    return out;
+}
+
 static Vector *expand_macro(Preprocessor *cpp, Macro *m, Vector *args) {
     Vector *substituted = vec_new();
     Vector *result = vec_new();
+    Vector **expanded_args = NULL;
     int i, j;
-    (void)cpp;
+
+    if (m->is_function_like && args && args->size > 0) {
+        expanded_args = (Vector **)c90_malloc(sizeof(Vector *) * args->size);
+        for (j = 0; j < args->size; j++) {
+            Vector *raw_arg = (Vector *)vec_get(args, j);
+            expanded_args[j] = expand_token_vector(cpp, raw_arg);
+        }
+    }
 
     if (!m->is_function_like) {
         for (i = 0; i < m->body->size; i++) {
@@ -177,6 +383,7 @@ static Vector *expand_macro(Preprocessor *cpp, Macro *m, Vector *args) {
                             str_tok->filename = t->filename ? c90_strdup(t->filename) : NULL;
                             str_tok->line = t->line;
                             str_tok->col = t->col;
+                            str_tok->hideset = NULL;
                             str_tok->next = NULL;
                             vec_push(substituted, str_tok);
                             strbuf_free(sb);
@@ -194,13 +401,23 @@ static Vector *expand_macro(Preprocessor *cpp, Macro *m, Vector *args) {
                 for (j = 0; j < m->params->size; j++) {
                     char *pname = (char *)vec_get(m->params, j);
                     if (strcmp(t->str, pname) == 0) {
+                        int is_adjacent_to_hash_hash = 0;
                         is_param = 1;
+                        if (i > 0 && ((Token *)vec_get(m->body, i - 1))->kind == TOK_HASH_HASH) {
+                            is_adjacent_to_hash_hash = 1;
+                        }
+                        if (i + 1 < m->body->size && ((Token *)vec_get(m->body, i + 1))->kind == TOK_HASH_HASH) {
+                            is_adjacent_to_hash_hash = 1;
+                        }
+
                         if (args && j < args->size) {
-                            Vector *arg_tokens = (Vector *)vec_get(args, j);
+                            Vector *arg_tokens = is_adjacent_to_hash_hash ? (Vector *)vec_get(args, j) : expanded_args[j];
                             int k;
-                            for (k = 0; k < arg_tokens->size; k++) {
-                                Token *at = (Token *)vec_get(arg_tokens, k);
-                                vec_push(substituted, clone_token(at));
+                            if (arg_tokens) {
+                                for (k = 0; k < arg_tokens->size; k++) {
+                                    Token *at = (Token *)vec_get(arg_tokens, k);
+                                    vec_push(substituted, clone_token(at));
+                                }
                             }
                         }
                         break;
@@ -240,6 +457,12 @@ static Vector *expand_macro(Preprocessor *cpp, Macro *m, Vector *args) {
         } else {
             vec_push(result, t);
         }
+    }
+
+    /* Tag all tokens in result with m->name in their hideset */
+    for (i = 0; i < result->size; i++) {
+        Token *t = (Token *)vec_get(result, i);
+        hideset_add(&t->hideset, m->name);
     }
 
     vec_free(substituted);
@@ -309,7 +532,10 @@ static long eval_cpp_primary(Preprocessor *cpp, Token **pcur) {
             *pcur = next;
             return is_def;
         } else {
-            Macro *m = (Macro *)map_get(cpp->macros, tok->str);
+            Macro *m = NULL;
+            if (!hideset_contains(tok->hideset, tok->str)) {
+                m = (Macro *)map_get(cpp->macros, tok->str);
+            }
             *pcur = tok->next;
             if (m && m->is_function_like && *pcur && (*pcur)->kind == '(') {
                 Vector *args = vec_new();
@@ -553,7 +779,7 @@ static char *resolve_include_path(Preprocessor *cpp, const char *header_path, in
     /* If quoted include, try current directory of including file first */
     if (!is_angle && cur_file) {
         char dir[1024];
-        char *last_slash = strrchr(cur_file, '/');
+        const char *last_slash = strrchr(cur_file, '/');
         if (last_slash) {
             int dlen = (int)(last_slash - cur_file);
             if (dlen >= 1024) dlen = 1023;
@@ -832,7 +1058,9 @@ Token *cpp_process(Preprocessor *cpp, const char *source, const char *filename) 
                     cur = cur->next;
                     continue;
                 }
-                m = (Macro *)map_get(cpp->macros, cur->str);
+                if (!hideset_contains(cur->hideset, cur->str)) {
+                    m = (Macro *)map_get(cpp->macros, cur->str);
+                }
             }
 
             if (m) {

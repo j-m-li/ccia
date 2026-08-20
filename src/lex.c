@@ -80,6 +80,8 @@ static KeywordEntry keywords[] = {
     {"__int128", TOK_LONG},
     {"__int128_t", TOK_LONG},
     {"__uint128_t", TOK_LONG},
+    {"__thread", TOK_THREAD},
+    {"_Thread_local", TOK_THREAD},
     {NULL, 0}
 };
 
@@ -201,6 +203,7 @@ static Token *token_new(int kind, const char *str, const char *filename, int lin
     tok->filename = filename ? c90_strdup(filename) : NULL;
     tok->line = line;
     tok->col = col;
+    tok->hideset = NULL;
     tok->next = NULL;
     return tok;
 }
