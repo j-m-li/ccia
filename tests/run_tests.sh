@@ -27,6 +27,7 @@ TESTS=(
     "test_libc"
     "test_float"
     "test_bitfields"
+    "test_precedence"
     "test_comprehensive"
 )
 
