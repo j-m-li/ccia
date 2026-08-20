@@ -159,7 +159,7 @@ clean:
 	rm -f $(TARGET_X86_64) $(STAGE2_TARGET) $(STAGE3_TARGET)
 	rm -f $(TARGET_I386) $(STAGE2_I386_TARGET) $(STAGE3_I386_TARGET)
 	rm -f *.o *.s *.stage2.s *.stage3.s *.s2.s *.s3.s *.i386*.s src/*.s src/*.s2.s src/*.s3.s src/*.i386*.s src/*.tmp.s
-	rm -f a.out tests/*.o tests/*.s tests/*.bin
+	rm -f a.out tests/*.o tests/*.s tests/*.bin tests/stb.png tests/stb.jpg
 
 .PHONY: all self self-i386 bootstrap bootstrap-i386 test test-x86_64 test-i386 test-self clean
 

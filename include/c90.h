@@ -428,6 +428,7 @@ typedef enum AstKind {
     /* Member Access & Calls */
     AST_MEMBER,       /* . or -> */
     AST_CALL,
+    AST_VA_ARG,
     AST_COND,         /* ? : */
 
     /* Statements */
@@ -524,6 +525,11 @@ typedef struct AstNode {
             struct AstNode *func;
             Vector *args;        /* vector of AstNode* */
         } call;
+
+        /* AST_VA_ARG */
+        struct {
+            struct AstNode *ap;
+        } va_arg;
 
         /* AST_BLOCK */
         struct {
@@ -664,6 +670,7 @@ typedef struct CodeGen {
     Vector *continue_stack;
     int scratch_base;
     int ldouble_slot;
+    Symbol *current_func;
 } CodeGen;
 
 CodeGen *codegen_new(FILE *out, AstNode *root);

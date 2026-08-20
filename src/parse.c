@@ -334,6 +334,22 @@ static AstNode *parse_primary(Parser *p) {
             return node;
         }
 
+        if (strcmp(tok->str, "__builtin_va_arg") == 0) {
+            Token *va_tok = next(p);
+            AstNode *node;
+            AstNode *ap;
+            Type *target_type;
+            expect(p, '(');
+            ap = parse_assignment(p);
+            expect(p, ',');
+            target_type = parse_type_name(p);
+            expect(p, ')');
+            node = ast_new(AST_VA_ARG, va_tok->filename, va_tok->line);
+            node->type = target_type;
+            node->u.va_arg.ap = ap;
+            return node;
+        }
+
         sym = scope_lookup(tok->str);
         next(p);
         if (!sym) {
@@ -1229,10 +1245,18 @@ static Initializer *parse_initializer(Parser *p, Type *type) {
             if (!match(p, ',')) break;
         }
         expect(p, '}');
+        if (type && type->kind == TYPE_ARRAY && type->array_len < 0) {
+            type->array_len = init->elements ? init->elements->size : 0;
+            type->size = type->array_len * (type->base && type->base->size > 0 ? type->base->size : 1);
+        }
     } else {
         init->expr = parse_assignment(p);
         if (init->expr && type && (type_is_floating(type) || type_is_floating(init->expr->type)) && !type_equal(type, init->expr->type)) {
             init->expr = ast_cast(type, init->expr, p->current ? p->current->filename : NULL, p->current ? p->current->line : 0);
+        }
+        if (type && type->kind == TYPE_ARRAY && type->array_len < 0 && init->expr && init->expr->kind == AST_STR_LIT) {
+            type->array_len = init->expr->u.str_val.len + 1;
+            type->size = type->array_len;
         }
     }
     return init;
@@ -1467,6 +1491,10 @@ static AstNode *parse_compound_stmt(Parser *p) {
                     }
                     vec_push(p->globals, sym);
                 } else {
+                    Initializer *local_init = NULL;
+                    if (match(p, '=')) {
+                        local_init = parse_initializer(p, type);
+                    }
 #ifdef TARGET_I386
                     p->current_stack_offset += (type->size + 3) & ~3; /* 4-byte aligned stack slots */
 #else
@@ -1478,11 +1506,7 @@ static AstNode *parse_compound_stmt(Parser *p) {
                     }
                     decl_node = ast_new(AST_DECL_STMT, tok->filename, tok->line);
                     decl_node->u.decl_stmt.sym = sym;
-                    if (match(p, '=')) {
-                        decl_node->u.decl_stmt.init = parse_initializer(p, type);
-                    } else {
-                        decl_node->u.decl_stmt.init = NULL;
-                    }
+                    decl_node->u.decl_stmt.init = local_init;
                     vec_push(block->u.block.stmts, decl_node);
                 }
 

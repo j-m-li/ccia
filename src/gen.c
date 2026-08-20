@@ -22,6 +22,7 @@ CodeGen *codegen_new(FILE *out, AstNode *root) {
     gen->func_ret_label = NULL;
     gen->break_stack = vec_new();
     gen->continue_stack = vec_new();
+    gen->current_func = NULL;
     return gen;
 }
 
@@ -224,7 +225,7 @@ static void gen_lval(CodeGen *gen, AstNode *node) {
 
     if (node->kind == AST_VAR) {
         Symbol *sym = node->u.sym;
-        if (sym->is_global || sym->asm_label) {
+        if (sym->is_global || sym->kind == SYM_FUNC || sym->asm_label) {
             if (sym->asm_label) {
                 emit(gen, "    leaq %s(%%rip), %%rax", sym->asm_label);
             } else {
@@ -746,11 +747,24 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 }
                 if (strcmp(fname, "__builtin_va_start") == 0) {
                     if (node->u.call.args && node->u.call.args->size > 0) {
+                        int num_params = gen->current_func && gen->current_func->type && gen->current_func->type->params ?
+                                         gen->current_func->type->params->size : 0;
+                        int va_offset = (num_params < 6) ? -(num_params + 1) * 8 : (16 + (num_params - 6) * 8);
                         gen_lval(gen, (AstNode *)vec_get(node->u.call.args, 0));
                         emit(gen, "    pushq %%rax");
-                        emit(gen, "    leaq 16(%%rbp), %%rax");
+                        emit(gen, "    leaq %d(%%rbp), %%rax", va_offset);
                         emit(gen, "    popq %%rcx");
                         emit(gen, "    movq %%rax, (%%rcx)");
+                    }
+                    return;
+                }
+                if (strcmp(fname, "__builtin_va_copy") == 0) {
+                    if (node->u.call.args && node->u.call.args->size >= 2) {
+                        gen_expr(gen, (AstNode *)vec_get(node->u.call.args, 1));
+                        emit(gen, "    pushq %%rax");
+                        gen_lval(gen, (AstNode *)vec_get(node->u.call.args, 0));
+                        emit(gen, "    popq %%rcx");
+                        emit(gen, "    movq %%rcx, (%%rax)");
                     }
                     return;
                 }
@@ -798,6 +812,39 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             }
             if (stack_pad) {
                 emit(gen, "    addq $8, %%rsp");
+            }
+            return;
+        }
+
+        case AST_VA_ARG: {
+            int size = node->type ? (node->type->size > 0 ? node->type->size : 8) : 8;
+            int aligned_size = (size + 7) & ~7;
+            if (aligned_size < 8) aligned_size = 8;
+            gen_expr(gen, node->u.va_arg.ap);
+            emit(gen, "    pushq %%rax");
+            if (node->u.va_arg.ap->kind == AST_VAR) {
+                Symbol *sym = node->u.va_arg.ap->u.sym;
+                emit(gen, "    addq $%d, %d(%%rbp)", aligned_size, sym->stack_offset);
+            } else {
+                gen_lval(gen, node->u.va_arg.ap);
+                emit(gen, "    addq $%d, (%%rax)", aligned_size);
+            }
+            emit(gen, "    popq %%rax");
+            if (node->type && node->type->kind == TYPE_FLOAT) {
+                emit(gen, "    movss (%%rax), %%xmm0");
+            } else if (node->type && node->type->kind == TYPE_DOUBLE) {
+                emit(gen, "    movsd (%%rax), %%xmm0");
+            } else if (size == 1) {
+                if (node->type && node->type->is_unsigned) emit(gen, "    movzbq (%%rax), %%rax");
+                else emit(gen, "    movsbq (%%rax), %%rax");
+            } else if (size == 2) {
+                if (node->type && node->type->is_unsigned) emit(gen, "    movzwq (%%rax), %%rax");
+                else emit(gen, "    movswq (%%rax), %%rax");
+            } else if (size == 4) {
+                if (node->type && node->type->is_unsigned) emit(gen, "    movl (%%rax), %%eax");
+                else emit(gen, "    movslq (%%rax), %%rax");
+            } else {
+                emit(gen, "    movq (%%rax), %%rax");
             }
             return;
         }
@@ -1341,21 +1388,41 @@ static void gen_global_init(CodeGen *gen, Initializer *init, Type *type) {
             return;
         } else if (type && type->kind == TYPE_ARRAY) {
             Type *elem_type = type->base ? type->base : type_int;
+            int elem_size = elem_type ? (elem_type->size > 0 ? elem_type->size : 4) : 4;
+            int total_emitted = 0;
             for (i = 0; i < init->elements->size; i++) {
                 Initializer *elem = (Initializer *)vec_get(init->elements, i);
                 gen_global_init(gen, elem, elem_type);
+                total_emitted += elem_size;
             }
+            if (type->size > total_emitted) {
+                emit(gen, "    .zero %d", type->size - total_emitted);
+            }
+            return;
         } else {
             for (i = 0; i < init->elements->size; i++) {
                 Initializer *elem = (Initializer *)vec_get(init->elements, i);
                 gen_global_init(gen, elem, type->base ? type->base : type_int);
             }
+            return;
         }
     } else if (init->expr) {
         AstNode *e = init->expr;
         while (e && e->kind == AST_CAST) e = e->u.cast.operand;
         if (!e) {
             emit(gen, "    .zero %d", type->size);
+            return;
+        }
+        if (type && type->kind == TYPE_ARRAY && type->base && type->base->kind == TYPE_CHAR && e->kind == AST_STR_LIT) {
+            int len = e->u.str_val.len + 1;
+            int j;
+            for (j = 0; j < e->u.str_val.len; j++) {
+                emit(gen, "    .byte %d", (unsigned char)e->u.str_val.str[j]);
+            }
+            emit(gen, "    .byte 0");
+            if (type->size > len) {
+                emit(gen, "    .zero %d", type->size - len);
+            }
             return;
         }
         if (e->kind == AST_INT_LIT || e->kind == AST_CHAR_LIT) {
@@ -1469,6 +1536,7 @@ static void gen_func_def(CodeGen *gen, AstNode *func_node) {
     gen->func_ret_label = gen_asm_label(gen, "ret");
     gen->scratch_base = (stack_size > 128) ? (stack_size - 128 + 16) : 16;
     gen->ldouble_slot = 0;
+    gen->current_func = sym;
 
     emit(gen, "    .text");
     if (sym->storage != STORAGE_STATIC) {
