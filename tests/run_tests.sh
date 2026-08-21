@@ -49,7 +49,7 @@ for t in "${TESTS[@]}"; do
     fi
     
     # Execute compiled binary
-    if ! "$BIN" > "$DIR/$t.out" 2>&1; then
+    if ! $CCIA_RUNNER "$BIN" > "$DIR/$t.out" 2>&1; then
         echo "FAILED (Execution error)"
         cat "$DIR/$t.out"
         exit 1

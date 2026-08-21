@@ -23,7 +23,7 @@ typedef union {
     } u;
 } f64_cast;
 
-#if !defined(TARGET_I386) && !defined(__i386__)
+#if !defined(TARGET_I386) && !defined(__i386__) && !defined(TARGET_RISCV32) && !defined(__riscv) && !defined(TARGET_32BIT)
 static void f64_from_ulong(f64_cast *c, unsigned long val) {
     c->u64 = val;
 }
@@ -819,7 +819,7 @@ static void parse_dec_f64(const char *str, soft_f64 *out) {
 /* Float64 Target Wrappers                                                   */
 /* ========================================================================= */
 
-#if defined(TARGET_I386) || defined(__i386__)
+#if defined(TARGET_I386) || defined(__i386__) || defined(TARGET_RISCV32) || defined(__riscv) || defined(TARGET_32BIT)
 
 void *__adddf3(void *res, const void *a, const void *b) {
     f64_add_impl((soft_f64 *)res, (const soft_f64 *)a, (const soft_f64 *)b);
@@ -1449,7 +1449,7 @@ void *__extendsftf2(void *res, unsigned int a) {
     return r;
 }
 
-#if defined(TARGET_I386) || defined(__i386__)
+#if defined(TARGET_I386) || defined(__i386__) || defined(TARGET_RISCV32) || defined(__riscv) || defined(TARGET_32BIT)
 
 void *__extenddftf2(void *res, const void *a_ptr) {
     soft_f128 *r = (soft_f128 *)res;
@@ -1566,7 +1566,7 @@ int soft_strto_f32(const char *str, unsigned int *out) {
 int soft_strto_f128(const char *str, soft_f128 *out) {
     soft_f64 val;
     parse_dec_f64(str, &val);
-#if defined(TARGET_I386) || defined(__i386__)
+#if defined(TARGET_I386) || defined(__i386__) || defined(TARGET_RISCV32) || defined(__riscv) || defined(TARGET_32BIT)
     __extenddftf2(out, &val);
 #else
     __extenddftf2(out, ((unsigned long)val.hi << 32) | (unsigned long)val.lo);

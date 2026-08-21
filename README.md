@@ -2,7 +2,7 @@
 
 agy --conversation=74f9a373-71da-462a-80d8-e56dc0a222e4
 
-**CCIA** is a complete, self-contained, self-hosting ANSI C90 (ISO/IEC 9899:1990, commonly referred to as C89) compiler written strictly in portable ANSI C90. It targets both **x86_64** (System V AMD64 ABI) and **32-bit x86 / i386** (cdecl ABI) Linux.
+**CCIA** is a complete, self-contained, self-hosting ANSI C90 (ISO/IEC 9899:1990, commonly referred to as C89) compiler written strictly in portable ANSI C90. It targets **x86_64** (System V AMD64 ABI), **32-bit x86 / i386** (cdecl ABI), and **32-bit RISC-V RV32I** (ILP32 ABI) Linux using Clang/LLD.
 
 This project is dedicated to the **Public Domain** under [The Unlicense](UNLICENSE).
 
@@ -14,7 +14,10 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 - **Zero External Dependencies**: Relies exclusively on standard C90 library headers (`<stdio.h>`, `<stdlib.h>`, `<string.h>`, `<ctype.h>`, `<stdarg.h>`).
 - **3-Stage Self-Hosting Bootstrap**: Verified 3-stage bootstrap fixed-point on both x86_64 (`make self`) and 32-bit i386 (`make self-i386`). Stage 2 and Stage 3 produce **100% byte-for-byte identical assembly**.
 - **Real-World Capability**: Capable of compiling complex real-world single-header C libraries, such as `stb_image.h` (decoding PNG) and `stb_image_write.h` (encoding JPEG).
-- **Dual Target Architectures**: Emits clean, readable GNU assembler syntax for native 64-bit (`x86_64`) and 32-bit (`i386`) Linux systems.
+- **Multiple Target Architectures**:
+  - **x86_64**: Linux System V AMD64 ABI
+  - **i386**: Linux 32-bit x86 cdecl ABI
+  - **RV32I**: Linux 32-bit RISC-V ILP32 ABI (pure base integer instruction set assembled and linked via Clang/LLD, tested with `qemu-riscv32-static`)
 - **Pure C90 Software Floating-Point Subsystem**: Includes complete IEEE 754 floating-point implementation (`softfloat.c`) for single, double, and long double operations as well as compile-time constant expression evaluation.
 
 ---
@@ -45,23 +48,24 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 │ (type.c, sym.c) │  struct/union/enum layouts, bit-fields, symbol scoping
 └────────┬────────┘
          ▼
-┌─────────────────────────────────────────────────────────┐
-│                     Code Generators                     │
-│  ┌───────────────────────────┬───────────────────────┐  │
-│  │   x86_64 Backend (gen.c)  │ i386 Backend (gen_... │  │
-│  │  System V AMD64 ABI       │  cdecl ABI            │  │
-│  │  Register calling conv.   │  Stack calling conv.  │  │
-│  │  16-byte aligned frames   │  32-bit pointer model │  │
-│  └───────────────────────────┴───────────────────────┘  │
-└────────────────────────────┬────────────────────────────┘
-                             ▼
-                    Assembly Code (.s)
-                             │
-                             ▼
-                 Assembler (as) & Linker (ld)
-                             │
-                             ▼
-                      Executable (ELF)
+┌────────────────────────────────────────────────────────────────────────┐
+│                            Code Generators                             │
+│  ┌────────────────────────┬──────────────────────┬──────────────────┐  │
+│  │ x86_64 Backend (gen.c) │ i386 Backend (gen... │ RV32I Backend    │  │
+│  │ System V AMD64 ABI     │ cdecl ABI            │ ILP32 ABI        │  │
+│  │ Register calling conv. │ Stack calling conv.  │ Base RV32I ISA   │  │
+│  │ 16-byte aligned frames │ 32-bit pointer model │ a0..a7 registers │  │
+│  └────────────────────────┴──────────────────────┴──────────────────┘  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    ▼
+                           Assembly Code (.s)
+                                    │
+                                    ▼
+                       Assembler & Linker Driver
+                        (as / ld / clang / lld)
+                                    │
+                                    ▼
+                             Executable (ELF)
 ```
 
 ---
@@ -101,6 +105,7 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 ### 6. Target Code Generation
 - **x86_64 (`src/gen.c`)**: System V AMD64 ABI compliant. Passes arguments in registers (`%rdi`, `%rsi`, `%rdx`, `%rcx`, `%r8`, `%r9`), uses 16-byte stack frame alignment, supports variable argument functions (`__builtin_va_start`, `__builtin_va_arg`, `__builtin_va_copy`), and produces standard GNU assembler output.
 - **i386 (`src/gen_i386.c`)**: Standard Linux cdecl ABI compliant. Stack-based argument passing, caller cleanup, `%eax` return values, and 32-bit pointer/integer arithmetic.
+- **RV32I (`src/gen_riscv32.c`)**: Standard Linux RISC-V 32-bit ILP32 ABI compliant. Pure base RV32I integer instruction set, argument passing in `a0..a7`, frame pointer `s0`, software integer division/multiplication and floating point emulation, self-contained Linux runtime (`src/runtime_rv32.c`), freestanding headers in `include/riscv32/`, assembled and linked via Clang (`clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -fuse-ld=lld`).
 
 ---
 
@@ -110,7 +115,18 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 .
 ├── include/
 │   ├── c90.h               # Core compiler definitions (AST, Tokens, Types, Symbols, Driver API)
-│   └── softfloat.h         # Software floating-point subsystem declarations
+│   ├── softfloat.h         # Software floating-point subsystem declarations
+│   └── riscv32/            # Freestanding C90 standard headers for 32-bit RISC-V target
+│       ├── assert.h
+│       ├── ctype.h
+│       ├── limits.h
+│       ├── math.h
+│       ├── stdarg.h
+│       ├── stddef.h
+│       ├── stdint.h
+│       ├── stdio.h
+│       ├── stdlib.h
+│       └── string.h
 ├── src/
 │   ├── main.c              # Compiler driver entry point and CLI option handling
 │   ├── util.c              # Safe allocators, dynamic Vector, Map, StrBuf, diagnostics
@@ -121,6 +137,8 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 │   ├── parse.c             # Recursive descent parser and constant folding
 │   ├── gen.c               # x86_64 Code Generator (System V AMD64 ABI)
 │   ├── gen_i386.c          # 32-bit x86 Code Generator (cdecl ABI)
+│   ├── gen_riscv32.c       # 32-bit RISC-V RV32I Code Generator (ILP32 ABI)
+│   ├── runtime_rv32.c      # Freestanding Linux C runtime for RV32I (I/O, memory, math, syscalls)
 │   └── softfloat.c         # Pure C90 IEEE 754 software floating-point implementation
 ├── tests/
 │   ├── test_expr.c         # Expressions, arithmetic, bitwise, and logical operators
@@ -145,7 +163,7 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 ## Building
 
 ### Quick Build
-To compile both the 64-bit compiler (`ccia`) and 32-bit compiler (`ccia-i386`):
+To compile the x86_64 (`ccia`), 32-bit x86 (`ccia-i386`), and 32-bit RISC-V (`ccia-rv32i`) compilers:
 
 ```bash
 make
@@ -186,7 +204,7 @@ make test-self
 
 ## Running Tests
 
-Run the full automated test suite on both target architectures:
+Run the full automated test suite across all target architectures:
 
 ```bash
 make test
@@ -194,8 +212,9 @@ make test
 
 Target-specific test execution:
 ```bash
-make test-x86_64   # Test 64-bit compiler
-make test-i386     # Test 32-bit compiler
+make test-x86_64   # Test 64-bit compiler (native)
+make test-i386     # Test 32-bit x86 compiler (native 32-bit)
+make test-rv32i    # Test 32-bit RISC-V RV32I compiler (under qemu-riscv32-static)
 ```
 
 ---
@@ -230,7 +249,13 @@ Options:
 ./hello32
 ```
 
-#### 3. Generate assembly output (`.s`):
+#### 3. Compile and link for 32-bit RISC-V (RV32I):
+```bash
+./ccia-rv32i -Iinclude/riscv32 -Iinclude -o hello_rv32.bin hello.c
+qemu-riscv32-static hello_rv32.bin
+```
+
+#### 4. Generate assembly output (`.s`):
 ```bash
 ./ccia -S -o program.s program.c
 ```

@@ -1622,7 +1622,7 @@ static AstNode *parse_compound_stmt(Parser *p) {
                     if (match(p, '=')) {
                         local_init = parse_initializer(p, type);
                     }
-#ifdef TARGET_I386
+#if defined(TARGET_I386) || defined(TARGET_RISCV32) || defined(TARGET_32BIT)
                     p->current_stack_offset += (type->size + 3) & ~3; /* 4-byte aligned stack slots */
 #else
                     p->current_stack_offset += (type->size + 7) & ~7; /* 8-byte aligned stack slots */
@@ -1714,7 +1714,11 @@ AstNode *parser_parse(Parser *p) {
 
             p->current_func = sym;
             p->current_func_locals = vec_new();
+#ifdef TARGET_RISCV32
+            p->current_stack_offset = 32;
+#else
             p->current_stack_offset = 0;
+#endif
 
             func_node->u.func_def.sym = sym;
             func_node->u.func_def.params = vec_new();
@@ -1724,7 +1728,24 @@ AstNode *parser_parse(Parser *p) {
 
             /* Add function parameters as local symbols */
             if (type->params) {
-#ifdef TARGET_I386
+#ifdef TARGET_RISCV32
+                for (i = 0; i < type->params->size; i++) {
+                    Param *param = (Param *)vec_get(type->params, i);
+                    if (param->name) {
+                        Symbol *psym = symbol_new(SYM_VAR, param->name, param->type);
+                        if (i < 8) {
+                            p->current_stack_offset += (param->type->size + 3) & ~3;
+                            psym->stack_offset = -p->current_stack_offset;
+                        } else {
+                            /* RISC-V ILP32 stack arguments */
+                            psym->stack_offset = (i - 8) * 4;
+                        }
+                        scope_add_symbol(psym);
+                        vec_push(func_node->u.func_def.params, psym);
+                        vec_push(p->current_func_locals, psym);
+                    }
+                }
+#elif defined(TARGET_I386)
                 int param_offset = 8;
                 for (i = 0; i < type->params->size; i++) {
                     Param *param = (Param *)vec_get(type->params, i);
@@ -1759,7 +1780,7 @@ AstNode *parser_parse(Parser *p) {
 #endif
             }
 
-#ifndef TARGET_I386
+#if !defined(TARGET_I386) && !defined(TARGET_RISCV32)
             if (type->is_varargs) {
                 int start_reg = type->params ? type->params->size : 0;
                 while (start_reg < 6) {

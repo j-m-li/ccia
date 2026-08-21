@@ -32,7 +32,7 @@ void type_init(void) {
     type_uint = type_new(TYPE_INT, 4, 4);
     type_uint->is_unsigned = 1;
 
-#ifdef TARGET_I386
+#if defined(TARGET_I386) || defined(TARGET_RISCV32) || defined(TARGET_32BIT)
     type_long = type_new(TYPE_LONG, 4, 4);
     type_ulong = type_new(TYPE_LONG, 4, 4);
     type_ulong->is_unsigned = 1;
@@ -70,7 +70,7 @@ Type *type_new(TypeKind kind, int size, int align) {
 }
 
 Type *type_pointer_to(Type *base) {
-#ifdef TARGET_I386
+#if defined(TARGET_I386) || defined(TARGET_RISCV32) || defined(TARGET_32BIT)
     Type *t = type_new(TYPE_PTR, 4, 4);
 #else
     Type *t = type_new(TYPE_PTR, 8, 8);

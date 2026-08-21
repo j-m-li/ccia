@@ -6,9 +6,21 @@
 #ifndef C90_H
 #define C90_H
 
+#if defined(TARGET_RISCV32) || defined(__CCIA_RISCV32__) || defined(__riscv) || defined(__riscv__)
+#ifndef TARGET_RISCV32
+#define TARGET_RISCV32 1
+#endif
+#endif
+
 #if defined(TARGET_I386) || defined(__CCIA_I386__) || defined(__CC90_I386__) || defined(__i386__) || defined(__i386)
 #ifndef TARGET_I386
 #define TARGET_I386 1
+#endif
+#endif
+
+#if defined(TARGET_I386) || defined(TARGET_RISCV32)
+#ifndef TARGET_32BIT
+#define TARGET_32BIT 1
 #endif
 #endif
 

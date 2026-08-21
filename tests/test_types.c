@@ -12,7 +12,7 @@ int test_scalars(void) {
     unsigned short us = 50000;
     int i = -100000;
     unsigned int ui = 3000000000U;
-#ifdef __i386__
+#if defined(__i386__) || defined(__riscv) || defined(__ILP32__)
     long l = -2000000000L;
     unsigned long ul = 4000000000UL;
 #else
@@ -23,7 +23,7 @@ int test_scalars(void) {
     if (sizeof(char) != 1) { printf("fail 1\n"); return 1; }
     if (sizeof(short) != 2) { printf("fail 2\n"); return 2; }
     if (sizeof(int) != 4) { printf("fail 3\n"); return 3; }
-#ifdef __i386__
+#if defined(__i386__) || defined(__riscv) || defined(__ILP32__)
     if (sizeof(long) != 4) { printf("fail 4\n"); return 4; }
     if (sizeof(void *) != 4) { printf("fail 5\n"); return 5; }
 #else
@@ -37,7 +37,7 @@ int test_scalars(void) {
     if (us - 10000 != 40000) { printf("fail 9: %d\n", us - 10000); return 9; }
     if (i + 100000 != 0) { printf("fail 10: %d\n", i + 100000); return 10; }
     if (ui != 3000000000U) { printf("fail 11\n"); return 11; }
-#ifdef __i386__
+#if defined(__i386__) || defined(__riscv) || defined(__ILP32__)
     if (l != -2000000000L) { printf("fail 12: l=%ld\n", l); return 12; }
     if (ul != 4000000000UL) { printf("fail 13\n"); return 13; }
 #else
@@ -96,7 +96,7 @@ int test_arrays(void) {
 }
 
 int test_casts(void) {
-#ifdef __i386__
+#if defined(__i386__) || defined(__riscv) || defined(__ILP32__)
     long l = 0x5678ABCD;
 #else
     long l = 0x12345678ABCD;

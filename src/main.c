@@ -11,7 +11,9 @@ static void print_usage(const char *progname) {
     printf("Usage: %s [options] <input-file.c>\n\n", progname);
     printf("Options:\n");
     printf("  -o <file>       Place the output into <file>\n");
-#ifdef TARGET_I386
+#ifdef TARGET_RISCV32
+    printf("  -S              Compile only; generate RISC-V 32-bit (RV32I) assembly (.s)\n");
+#elif defined(TARGET_I386)
     printf("  -S              Compile only; generate x86 (i386 32-bit) assembly (.s)\n");
 #else
     printf("  -S              Compile only; generate x86_64 assembly (.s)\n");
@@ -22,7 +24,9 @@ static void print_usage(const char *progname) {
     printf("  -D <macro>[=v]  Define macro with optional value\n");
     printf("  -v, --version   Display compiler version and public domain notice\n");
     printf("  -h, --help      Display this information\n\n");
-#ifdef TARGET_I386
+#ifdef TARGET_RISCV32
+    printf("This is a C90 (ANSI C89) compiler targeting 32-bit RISC-V (RV32I) Linux using clang.\n");
+#elif defined(TARGET_I386)
     printf("This is a C90 (ANSI C89) compiler targeting x86 32-bit (i386) Linux.\n");
 #else
     printf("This is a C90 (ANSI C89) compiler targeting x86_64 Linux.\n");
@@ -31,7 +35,10 @@ static void print_usage(const char *progname) {
 }
 
 static void print_version(void) {
-#ifdef TARGET_I386
+#ifdef TARGET_RISCV32
+    printf("ccia-rv32i version 1.0.0 (riscv32-linux)\n");
+    printf("A Public Domain C90 / ANSI C89 Compiler targeting 32-bit RISC-V (RV32I) using clang.\n");
+#elif defined(TARGET_I386)
     printf("ccia-i386 version 1.0.0 (i386-linux)\n");
     printf("A Public Domain C90 / ANSI C89 Compiler targeting 32-bit x86 (i386).\n");
 #else
@@ -82,7 +89,10 @@ static char *get_softfloat_obj(const char *progname) {
     char *slash;
     FILE *fp;
 
-#ifdef TARGET_I386
+#ifdef TARGET_RISCV32
+    const char *sf_name = "src/softfloat.rv32i.o";
+    const char *sf_base = "softfloat.rv32i.o";
+#elif defined(TARGET_I386)
     const char *sf_name = "src/softfloat.i386.o";
     const char *sf_base = "softfloat.i386.o";
 #else
@@ -116,6 +126,41 @@ static char *get_softfloat_obj(const char *progname) {
 
     return (char *)sf_name;
 }
+
+#ifdef TARGET_RISCV32
+static char *get_runtime_obj(const char *progname) {
+    static char path[2048];
+    char dir[1024];
+    char *slash;
+    FILE *fp;
+    const char *rt_name = "src/runtime_rv32.rv32i.o";
+    const char *rt_base = "runtime_rv32.rv32i.o";
+
+    fp = fopen(rt_name, "rb");
+    if (fp) { fclose(fp); return (char *)rt_name; }
+
+    if (strlen(progname) < 1000) {
+        strcpy(dir, progname);
+        slash = strrchr(dir, '/');
+        if (slash) {
+            *slash = '\0';
+            sprintf(path, "%s/%s", dir, rt_base);
+            fp = fopen(path, "rb");
+            if (fp) { fclose(fp); return path; }
+
+            sprintf(path, "%s/src/%s", dir, rt_base);
+            fp = fopen(path, "rb");
+            if (fp) { fclose(fp); return path; }
+
+            sprintf(path, "%s/%s", dir, rt_name);
+            fp = fopen(path, "rb");
+            if (fp) { fclose(fp); return path; }
+        }
+    }
+
+    return (char *)rt_name;
+}
+#endif
 
 int main(int argc, char **argv) {
     int i;
@@ -283,7 +328,9 @@ int main(int argc, char **argv) {
         } else {
             obj_file = replace_extension(g_config.input_file, ".o");
         }
-#ifdef TARGET_I386
+#ifdef TARGET_RISCV32
+        sprintf(cmd, "clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -c -o %s %s", obj_file, asm_file);
+#elif defined(TARGET_I386)
         sprintf(cmd, "as --32 -o %s %s", obj_file, asm_file);
 #else
         sprintf(cmd, "as -o %s %s", obj_file, asm_file);
@@ -299,10 +346,19 @@ int main(int argc, char **argv) {
 
     /* Full executable compilation and linking */
     {
-        char cmd[4096];
+        char cmd[8192];
         char *exe_file = g_config.output_file ? g_config.output_file : "a.out";
         char *sf_obj = get_softfloat_obj(argv[0]);
-#ifdef TARGET_I386
+#ifdef TARGET_RISCV32
+        char *rt_obj = get_runtime_obj(argv[0]);
+        sprintf(cmd, "clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -fuse-ld=lld -nostdlib -static -o %s %s %s %s",
+                exe_file, asm_file, sf_obj, rt_obj);
+        if (system(cmd) != 0) {
+            fprintf(stderr, "ccia: linking failed\n");
+            if (need_cleanup_asm) remove(asm_file);
+            return 1;
+        }
+#elif defined(TARGET_I386)
         sprintf(cmd, "gcc -m32 -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
         if (system(cmd) != 0) {
             sprintf(cmd, "gcc -m32 -o %s %s %s -lm", exe_file, asm_file, sf_obj);

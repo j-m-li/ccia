@@ -6,9 +6,13 @@
 #ifndef SOFTFLOAT_H
 #define SOFTFLOAT_H
 
+#if defined(TARGET_RISCV32) || defined(__riscv) || defined(__riscv__)
+#include <stddef.h>
+#else
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#endif
 
 /* ========================================================================= */
 /* Software Floating Point Types and Multi-Word Structs                      */
@@ -56,7 +60,7 @@ unsigned long __fixunssfdi(unsigned int a);
 /* Float64 (Double Precision) API                                            */
 /* ========================================================================= */
 
-#if defined(TARGET_I386) || defined(__i386__)
+#if defined(TARGET_I386) || defined(__i386__) || defined(TARGET_RISCV32) || defined(__riscv) || defined(__riscv__) || defined(TARGET_32BIT)
 void *__adddf3(void *res, const void *a, const void *b);
 void *__subdf3(void *res, const void *a, const void *b);
 void *__muldf3(void *res, const void *a, const void *b);

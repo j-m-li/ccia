@@ -47,7 +47,17 @@ STAGE2_I386_TARGET = ccia-i386_stage2
 STAGE3_I386_OBJS = $(SRCS_I386:.c=.i386_s3.o)
 STAGE3_I386_TARGET = ccia-i386_stage3
 
-all: $(TARGET_X86_64) $(TARGET_I386) src/softfloat.o
+# RISC-V 32-bit (RV32I) Sources & Target
+CLANG ?= clang
+QEMU_RV32 ?= qemu-riscv32-static
+SRCS_RV32I = src/main.c src/util.c src/lex.c src/cpp.c src/type.c src/sym.c src/parse.c src/gen_riscv32.c src/softfloat.c
+OBJS_RV32I = $(SRCS_RV32I:.c=.rv32i_host.o)
+TARGET_RV32I = ccia-rv32i
+
+RUNTIME_RV32I_OBJ = src/runtime_rv32.rv32i.o
+SOFTFLOAT_RV32I_OBJ = src/softfloat.rv32i.o
+
+all: $(TARGET_X86_64) $(TARGET_I386) $(TARGET_RV32I) src/softfloat.o
 
 # -----------------------------------------------------------------------------
 # x86_64 Build & Bootstrap Targets
@@ -122,21 +132,44 @@ self-i386: $(STAGE2_I386_TARGET) $(STAGE3_I386_TARGET)
 bootstrap-i386: self-i386
 
 # -----------------------------------------------------------------------------
+# RISC-V 32-bit (RV32I) Build Targets (using Clang)
+# -----------------------------------------------------------------------------
+
+$(TARGET_RV32I): $(OBJS_RV32I) $(RUNTIME_RV32I_OBJ) $(SOFTFLOAT_RV32I_OBJ)
+	$(CC) $(CFLAGS) -DTARGET_RISCV32 -o $@ $(OBJS_RV32I)
+
+%.rv32i_host.o: %.c
+	$(CC) $(CFLAGS) -DTARGET_RISCV32 -c -o $@ $<
+
+$(RUNTIME_RV32I_OBJ): src/runtime_rv32.c
+	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O2 -c -o $@ $<
+
+$(SOFTFLOAT_RV32I_OBJ): src/softfloat.c
+	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O2 -c -o $@ $<
+
+INCLUDES_RV32I = -Iinclude/riscv32 -Iinclude
+
+# -----------------------------------------------------------------------------
 # Testing Targets
 # -----------------------------------------------------------------------------
 
-test: $(TARGET_X86_64) $(TARGET_I386)
+test: $(TARGET_X86_64) $(TARGET_I386) $(TARGET_RV32I)
 	@echo "=== Running test suite with ccia (x86_64) ==="
 	@CCIA=./$(TARGET_X86_64) CCIA_INCLUDES="$(INCLUDES_X86_64)" bash tests/run_tests.sh
 	@echo "=== Running test suite with ccia-i386 (x86 32-bit) ==="
 	@CCIA=./$(TARGET_I386) CCIA_INCLUDES="$(INCLUDES_I386)" bash tests/run_tests.sh
-	@echo "SUCCESS: All tests passed on both x86_64 and i386!"
+	@echo "=== Running test suite with ccia-rv32i (RISC-V 32-bit RV32I) ==="
+	@CCIA=./$(TARGET_RV32I) CCIA_RUNNER="$(QEMU_RV32)" CCIA_INCLUDES="$(INCLUDES_RV32I)" bash tests/run_tests.sh
+	@echo "SUCCESS: All tests passed on x86_64, i386, and RISC-V 32-bit RV32I!"
 
 test-x86_64: $(TARGET_X86_64)
 	@CCIA=./$(TARGET_X86_64) CCIA_INCLUDES="$(INCLUDES_X86_64)" bash tests/run_tests.sh
 
 test-i386: $(TARGET_I386)
 	@CCIA=./$(TARGET_I386) CCIA_INCLUDES="$(INCLUDES_I386)" bash tests/run_tests.sh
+
+test-rv32i: $(TARGET_RV32I)
+	@CCIA=./$(TARGET_RV32I) CCIA_RUNNER="$(QEMU_RV32)" CCIA_INCLUDES="$(INCLUDES_RV32I)" bash tests/run_tests.sh
 
 test-self: self self-i386
 	@echo "=== Running test suite with x86_64 stages ==="
@@ -156,12 +189,14 @@ test-self: self self-i386
 clean:
 	rm -f $(OBJS_X86_64) $(STAGE2_OBJS) $(STAGE3_OBJS)
 	rm -f $(OBJS_I386) $(STAGE2_I386_OBJS) $(STAGE3_I386_OBJS)
+	rm -f $(OBJS_RV32I) $(RUNTIME_RV32I_OBJ) $(SOFTFLOAT_RV32I_OBJ)
 	rm -f $(TARGET_X86_64) $(STAGE2_TARGET) $(STAGE3_TARGET)
 	rm -f $(TARGET_I386) $(STAGE2_I386_TARGET) $(STAGE3_I386_TARGET)
-	rm -f *.o *.s *.stage2.s *.stage3.s *.s2.s *.s3.s *.i386*.s src/*.s src/*.s2.s src/*.s3.s src/*.i386*.s src/*.tmp.s
+	rm -f $(TARGET_RV32I)
+	rm -f *.o *.s *.stage2.s *.stage3.s *.s2.s *.s3.s *.i386*.s *.rv32i*.s src/*.s src/*.s2.s src/*.s3.s src/*.i386*.s src/*.tmp.s
 	rm -f a.out tests/*.o tests/*.s tests/*.bin tests/stb.png tests/stb.jpg
 
-.PHONY: all self self-i386 bootstrap bootstrap-i386 test test-x86_64 test-i386 test-self clean
+.PHONY: all self self-i386 bootstrap bootstrap-i386 test test-x86_64 test-i386 test-rv32i test-self clean
 
 
 
