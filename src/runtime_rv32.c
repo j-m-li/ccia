@@ -19,6 +19,8 @@ int tolower(int c);
 int toupper(int c);
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 
+int errno = 0;
+
 /* ========================================================================= */
 /* Linux RISC-V 32-bit System Call Numbers                                   */
 /* ========================================================================= */
@@ -59,6 +61,13 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 /* ========================================================================= */
 /* System Call Wrappers using RV32 ecall                                     */
 /* ========================================================================= */
+
+static long sys_call0(long num) {
+    register long r_a7 __asm__("a7") = num;
+    register long r_a0 __asm__("a0") = 0;
+    __asm__ volatile ("ecall" : "+r"(r_a0) : "r"(r_a7) : "memory");
+    return r_a0;
+}
 
 static long sys_call1(long num, long a0) {
     register long r_a7 __asm__("a7") = num;
@@ -119,15 +128,24 @@ void abort(void) {
     exit(134);
 }
 
+char **environ = NULL;
+
 extern int main(int argc, char **argv);
+
+void _start_c(int argc, char **argv, char **envp) {
+    environ = envp;
+    exit(main(argc, argv));
+}
 
 __attribute__((naked)) void _start(void) {
     __asm__ volatile (
         "lw a0, 0(sp)\n"
         "addi a1, sp, 4\n"
+        "slli a2, a0, 2\n"
+        "add a2, a2, a1\n"
+        "addi a2, a2, 4\n"
         "addi sp, sp, -16\n"
-        "call main\n"
-        "call exit\n"
+        "call _start_c\n"
     );
 }
 
@@ -659,6 +677,32 @@ int puts(const char *s) {
     return fputc('\n', stdout);
 }
 
+char *fgets(char *s, int size, FILE *stream) {
+    int i = 0;
+    if (!s || size <= 0 || !stream) return NULL;
+    while (i < size - 1) {
+        int c = fgetc(stream);
+        if (c == -1) {
+            if (i == 0) return NULL;
+            break;
+        }
+        s[i++] = (char)c;
+        if (c == '\n') break;
+    }
+    s[i] = '\0';
+    return s;
+}
+
+int fileno(FILE *stream) {
+    return stream ? stream->fd : -1;
+}
+
+int isatty(int fd) {
+    char termios_buf[128];
+    long r = sys_call3(SYS_ioctl, fd, 0x5401 /* TCGETS */, (long)termios_buf);
+    return r == 0;
+}
+
 /* ========================================================================= */
 /* Formatted Printing Helpers (vfprintf, sprintf, snprintf)                  */
 /* ========================================================================= */
@@ -717,69 +761,154 @@ static void sink_put_int(FormatSink *s, long val, int width, char pad) {
     }
 }
 
-int vfprintf(FILE *stream, const char *format, va_list ap) {
-    FormatSink sink;
+static void format_core(FormatSink *sink, const char *format, va_list ap) {
     const char *p = format;
-    sink.fp = stream;
-    sink.str = NULL;
-    sink.max_len = 0;
-    sink.count = 0;
-
     while (*p) {
         if (*p != '%') {
-            sink_putc(&sink, *p++);
+            sink_putc(sink, *p++);
             continue;
         }
         p++; /* skip '%' */
         if (*p == '%') {
-            sink_putc(&sink, '%');
+            sink_putc(sink, '%');
             p++;
             continue;
         }
 
-        /* Parse optional flags & width */
         {
+            int left_align = 0;
             char pad = ' ';
             int width = 0;
+            int precision = -1;
             int is_long = 0;
 
-            if (*p == '0') { pad = '0'; p++; }
-            while (*p >= '0' && *p <= '9') {
-                width = width * 10 + (*p - '0');
+            /* Flags */
+            while (*p == '-' || *p == '+' || *p == ' ' || *p == '#' || *p == '0') {
+                if (*p == '-') left_align = 1;
+                if (*p == '0' && !left_align) pad = '0';
                 p++;
             }
-            if (*p == 'l') { is_long = 1; p++; }
-            if (*p == 'l') { is_long = 2; p++; }
+            if (left_align) pad = ' ';
+
+            /* Field width */
+            if (*p == '*') {
+                width = va_arg(ap, int);
+                if (width < 0) {
+                    left_align = 1;
+                    width = -width;
+                    pad = ' ';
+                }
+                p++;
+            } else {
+                while (*p >= '0' && *p <= '9') {
+                    width = width * 10 + (*p - '0');
+                    p++;
+                }
+            }
+
+            /* Precision */
+            if (*p == '.') {
+                p++;
+                if (*p == '*') {
+                    precision = va_arg(ap, int);
+                    p++;
+                } else {
+                    precision = 0;
+                    while (*p >= '0' && *p <= '9') {
+                        precision = precision * 10 + (*p - '0');
+                        p++;
+                    }
+                }
+            }
+
+            /* Length modifier */
+            if (*p == 'h') { p++; if (*p == 'h') p++; }
+            else if (*p == 'l') { is_long = 1; p++; if (*p == 'l') { is_long = 2; p++; } }
+            else if (*p == 'z' || *p == 't') { is_long = 1; p++; }
 
             if (*p == 'd' || *p == 'i') {
-                long val = is_long ? va_arg(ap, long) : (long)va_arg(ap, int);
-                sink_put_int(&sink, val, width, pad);
-            } else if (*p == 'u') {
-                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
-                sink_put_uint(&sink, val, 10, 0, width, pad);
-            } else if (*p == 'x') {
-                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
-                sink_put_uint(&sink, val, 16, 0, width, pad);
-            } else if (*p == 'X') {
-                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
-                sink_put_uint(&sink, val, 16, 1, width, pad);
+                long val = (is_long >= 1) ? (long)va_arg(ap, long) : (long)va_arg(ap, int);
+                char buf[64];
+                int len = 0;
+                int i;
+                int is_neg = (val < 0);
+                unsigned long uval = is_neg ? (unsigned long)(-val) : (unsigned long)val;
+                if (uval == 0) buf[len++] = '0';
+                else {
+                    while (uval > 0) {
+                        buf[len++] = '0' + (uval % 10);
+                        uval /= 10;
+                    }
+                }
+                if (is_neg) len++; /* for '-' */
+                if (!left_align && pad == ' ' && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, ' ');
+                }
+                if (is_neg) sink_putc(sink, '-');
+                if (!left_align && pad == '0' && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, '0');
+                }
+                for (i = (is_neg ? len - 2 : len - 1); i >= 0; i--) sink_putc(sink, buf[i]);
+                if (left_align && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, ' ');
+                }
+            } else if (*p == 'u' || *p == 'x' || *p == 'X' || *p == 'o') {
+                unsigned long val = (is_long >= 1) ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
+                int base = (*p == 'o') ? 8 : ((*p == 'u') ? 10 : 16);
+                int uppercase = (*p == 'X');
+                char buf[64];
+                int len = 0;
+                int i;
+                const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
+                if (val == 0) buf[len++] = '0';
+                else {
+                    while (val > 0) {
+                        buf[len++] = digits[val % base];
+                        val /= base;
+                    }
+                }
+                if (!left_align && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, pad);
+                }
+                for (i = len - 1; i >= 0; i--) sink_putc(sink, buf[i]);
+                if (left_align && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, ' ');
+                }
             } else if (*p == 'p') {
                 void *ptr = va_arg(ap, void *);
-                sink_puts(&sink, "0x");
-                sink_put_uint(&sink, (unsigned long)ptr, 16, 0, 0, ' ');
+                sink_puts(sink, "0x");
+                sink_put_uint(sink, (unsigned long)ptr, 16, 0, 0, ' ');
             } else if (*p == 's') {
-                const char *str = va_arg(ap, const char *);
-                if (!str) str = "(null)";
-                sink_puts(&sink, str);
+                const char *s = va_arg(ap, const char *);
+                int slen, i;
+                if (!s) s = "(null)";
+                slen = (int)strlen(s);
+                if (precision >= 0 && precision < slen) slen = precision;
+                if (!left_align && width > slen) {
+                    for (i = 0; i < width - slen; i++) sink_putc(sink, ' ');
+                }
+                for (i = 0; i < slen; i++) sink_putc(sink, s[i]);
+                if (left_align && width > slen) {
+                    for (i = 0; i < width - slen; i++) sink_putc(sink, ' ');
+                }
             } else if (*p == 'c') {
                 int ch = va_arg(ap, int);
-                sink_putc(&sink, (char)ch);
+                sink_putc(sink, (char)ch);
             } else {
-                sink_putc(&sink, *p);
+                sink_putc(sink, *p);
             }
             if (*p) p++;
         }
     }
+}
+
+int vfprintf(FILE *stream, const char *format, va_list ap) {
+    FormatSink sink;
+    sink.fp = stream;
+    sink.str = NULL;
+    sink.max_len = 0;
+    sink.count = 0;
+    format_core(&sink, format, ap);
     return (int)sink.count;
 }
 
@@ -803,64 +932,11 @@ int fprintf(FILE *stream, const char *format, ...) {
 
 int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
     FormatSink sink;
-    const char *p = format;
     sink.fp = NULL;
     sink.str = str;
     sink.max_len = size;
     sink.count = 0;
-
-    while (*p) {
-        if (*p != '%') {
-            sink_putc(&sink, *p++);
-            continue;
-        }
-        p++;
-        if (*p == '%') {
-            sink_putc(&sink, '%');
-            p++;
-            continue;
-        }
-        {
-            char pad = ' ';
-            int width = 0;
-            int is_long = 0;
-            if (*p == '0') { pad = '0'; p++; }
-            while (*p >= '0' && *p <= '9') {
-                width = width * 10 + (*p - '0');
-                p++;
-            }
-            if (*p == 'l') { is_long = 1; p++; }
-            if (*p == 'l') { is_long = 2; p++; }
-
-            if (*p == 'd' || *p == 'i') {
-                long val = is_long ? va_arg(ap, long) : (long)va_arg(ap, int);
-                sink_put_int(&sink, val, width, pad);
-            } else if (*p == 'u') {
-                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
-                sink_put_uint(&sink, val, 10, 0, width, pad);
-            } else if (*p == 'x') {
-                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
-                sink_put_uint(&sink, val, 16, 0, width, pad);
-            } else if (*p == 'X') {
-                unsigned long val = is_long ? va_arg(ap, unsigned long) : (unsigned long)va_arg(ap, unsigned int);
-                sink_put_uint(&sink, val, 16, 1, width, pad);
-            } else if (*p == 'p') {
-                void *ptr = va_arg(ap, void *);
-                sink_puts(&sink, "0x");
-                sink_put_uint(&sink, (unsigned long)ptr, 16, 0, 0, ' ');
-            } else if (*p == 's') {
-                const char *s = va_arg(ap, const char *);
-                if (!s) s = "(null)";
-                sink_puts(&sink, s);
-            } else if (*p == 'c') {
-                int ch = va_arg(ap, int);
-                sink_putc(&sink, (char)ch);
-            } else {
-                sink_putc(&sink, *p);
-            }
-            if (*p) p++;
-        }
-    }
+    format_core(&sink, format, ap);
     if (size > 0 && str) {
         if (sink.count < size) str[sink.count] = '\0';
         else str[size - 1] = '\0';
@@ -998,7 +1074,15 @@ long labs(long j) {
 }
 
 char *getenv(const char *name) {
-    (void)name;
+    size_t len;
+    char **ep;
+    if (!name || !environ) return NULL;
+    len = strlen(name);
+    for (ep = environ; *ep; ep++) {
+        if (strncmp(*ep, name, len) == 0 && (*ep)[len] == '=') {
+            return *ep + len + 1;
+        }
+    }
     return NULL;
 }
 
@@ -1111,6 +1195,203 @@ double cos(double x) {
         sum += term;
     }
     return sum;
+}
+
+typedef void (*sighandler_t)(int);
+
+sighandler_t signal(int signum, sighandler_t handler) {
+    (void)signum;
+    (void)handler;
+    return (sighandler_t)0;
+}
+
+int raise(int sig) {
+    (void)sig;
+    return 0;
+}
+
+int kill(int pid, int sig) {
+    (void)pid;
+    (void)sig;
+    return 0;
+}
+
+struct passwd {
+    char *pw_name;
+    char *pw_passwd;
+    unsigned int pw_uid;
+    unsigned int pw_gid;
+    char *pw_gecos;
+    char *pw_dir;
+    char *pw_shell;
+};
+
+struct passwd *getpwuid(unsigned int uid) {
+    (void)uid;
+    return (struct passwd *)0;
+}
+
+struct passwd *getpwnam(const char *name) {
+    (void)name;
+    return (struct passwd *)0;
+}
+
+int open(const char *pathname, int flags, ...) {
+    int mode = 0;
+    long ret;
+    if (flags & 0100 /* O_CREAT */) {
+        va_list ap;
+        va_start(ap, flags);
+        mode = va_arg(ap, int);
+        va_end(ap);
+    }
+    ret = sys_call4(SYS_openat, AT_FDCWD, (long)pathname, flags, mode);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return (int)ret;
+}
+
+int close(int fd) {
+    long ret = sys_call1(SYS_close, fd);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+long read(int fd, void *buf, size_t count) {
+    long ret = sys_call3(SYS_read, fd, (long)buf, count);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return ret;
+}
+
+long write(int fd, const void *buf, size_t count) {
+    long ret = sys_call3(SYS_write, fd, (long)buf, count);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return ret;
+}
+
+long lseek(int fd, long offset, int whence) {
+    unsigned long long res = 0;
+    long ret = sys_call5(SYS_lseek, fd, (long)((unsigned long long)offset >> 32), (long)(offset & 0xFFFFFFFF), (long)&res, whence);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return (long)res;
+}
+
+int unlink(const char *pathname) {
+    long ret = sys_call3(SYS_unlinkat, AT_FDCWD, (long)pathname, 0);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+int access(const char *pathname, int mode) {
+    long ret = sys_call3(48 /* SYS_faccessat */, AT_FDCWD, (long)pathname, mode);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+int fstat(int fd, void *buf) {
+    long ret = sys_call2(SYS_fstat, fd, (long)buf);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+int stat(const char *pathname, void *buf) {
+    long ret = sys_call4(79 /* SYS_fstatat */, AT_FDCWD, (long)pathname, (long)buf, 0);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+int lstat(const char *pathname, void *buf) {
+    long ret = sys_call4(79 /* SYS_fstatat */, AT_FDCWD, (long)pathname, (long)buf, 0x100 /* AT_SYMLINK_NOFOLLOW */);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+int getpid(void) {
+    return (int)sys_call0(172 /* SYS_getpid */);
+}
+
+int getuid(void) {
+    return (int)sys_call0(174 /* SYS_getuid */);
+}
+
+int geteuid(void) {
+    return (int)sys_call0(175 /* SYS_geteuid */);
+}
+
+int getgid(void) {
+    return (int)sys_call0(176 /* SYS_getgid */);
+}
+
+int getegid(void) {
+    return (int)sys_call0(177 /* SYS_getegid */);
+}
+
+int fsync(int fd) {
+    long ret = sys_call1(82 /* SYS_fsync */, fd);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+int ftruncate(int fd, long length) {
+    long ret = sys_call4(46 /* SYS_ftruncate */, fd, (long)((unsigned long long)length >> 32), (long)(length & 0xFFFFFFFF), 0);
+    if (ret < 0) { errno = (int)(-ret); return -1; }
+    return 0;
+}
+
+int fcntl(int fd, int cmd, ...) {
+    long arg = 0;
+    va_list ap;
+    va_start(ap, cmd);
+    arg = va_arg(ap, long);
+    va_end(ap);
+    return (int)sys_call3(SYS_fcntl, fd, cmd, arg);
+}
+
+char *getcwd(char *buf, size_t size) {
+    long r = sys_call2(SYS_getcwd, (long)buf, size);
+    if (r < 0) return NULL;
+    return buf;
+}
+
+int usleep(unsigned long usec) {
+    long ts[2];
+    ts[0] = usec / 1000000;
+    ts[1] = (usec % 1000000) * 1000;
+    return (int)sys_call2(101 /* SYS_nanosleep */, (long)ts, 0);
+}
+
+long time(long *tloc) {
+    long ts[2];
+    long r = sys_call2(113 /* SYS_clock_gettime */, 0 /* CLOCK_REALTIME */, (long)ts);
+    if (r < 0) {
+        long tv[2];
+        sys_call2(169 /* SYS_gettimeofday */, (long)tv, 0);
+        ts[0] = tv[0];
+    }
+    if (tloc) *tloc = ts[0];
+    return ts[0];
+}
+
+struct tm {
+    int tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year, tm_wday, tm_yday, tm_isdst;
+};
+static struct tm static_tm;
+
+struct tm *gmtime(const long *timer) {
+    long t = timer ? *timer : 0;
+    static_tm.tm_sec = t % 60;
+    static_tm.tm_min = (t / 60) % 60;
+    static_tm.tm_hour = (t / 3600) % 24;
+    static_tm.tm_mday = 1 + ((t / 86400) % 30);
+    static_tm.tm_mon = ((t / (86400 * 30)) % 12);
+    static_tm.tm_year = 70 + (t / (86400 * 365));
+    static_tm.tm_wday = (4 + (t / 86400)) % 7;
+    static_tm.tm_yday = (t / 86400) % 365;
+    static_tm.tm_isdst = 0;
+    return &static_tm;
+}
+
+struct tm *localtime(const long *timer) {
+    return gmtime(timer);
 }
 
 #endif /* TARGET_RISCV32 */

@@ -240,7 +240,10 @@ clean:
 	rm -f *.o *.s *.stage2.s *.stage3.s *.s2.s *.s3.s *.i386*.s *.rv32i*.s src/*.s src/*.s2.s src/*.s3.s src/*.i386*.s src/*.rv32i*.s src/*.tmp.s
 	rm -f a.out tests/*.o tests/*.s tests/*.bin tests/stb.png tests/stb.jpg
 
-.PHONY: all self self-i386 self-rv32i bootstrap bootstrap-i386 bootstrap-rv32i test test-x86_64 test-i386 test-rv32i test-self clean
+triple-test: test-self
+trpile-test: test-self
+
+.PHONY: all self self-i386 self-rv32i bootstrap bootstrap-i386 bootstrap-rv32i test test-x86_64 test-i386 test-rv32i test-self triple-test trpile-test clean
 
 
 

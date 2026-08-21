@@ -1265,88 +1265,134 @@ static Type *parse_decl_specifiers(Parser *p, StorageClass *storage) {
     return type;
 }
 
-static Type *parse_declarator_suffix(Parser *p, Type *type);
+typedef struct DeclaratorSuffix DeclaratorSuffix;
+struct DeclaratorSuffix {
+    enum { SUFFIX_ARRAY, SUFFIX_FUNC } kind;
+    int array_len;
+    Vector *params;
+    int is_varargs;
+};
 
-static Type *parse_declarator(Parser *p, Type *base, char **out_name) {
-    int ptr_count = 0;
-    Type *type = base;
+typedef struct Declarator Declarator;
+struct Declarator {
+    int ptr_count;
+    enum { DECL_IDENT, DECL_NESTED } kind;
+    char *name;
+    Declarator *nested;
+    Vector *suffixes;
+};
+
+static Declarator *parse_declarator_node(Parser *p) {
+    Declarator *d = (Declarator *)c90_malloc(sizeof(Declarator));
+    d->kind = DECL_IDENT;
+    d->ptr_count = 0;
+    d->name = NULL;
+    d->nested = NULL;
+    d->suffixes = vec_new();
 
     skip_attribute(p);
     while (match(p, '*')) {
-        ptr_count++;
+        d->ptr_count++;
         while (match(p, TOK_CONST) || match(p, TOK_VOLATILE) || match(p, TOK_RESTRICT));
         skip_attribute(p);
     }
     skip_attribute(p);
 
-    if (peek(p) && peek(p)->kind == '(' && peek(p)->next && peek(p)->next->kind == '*') {
-        /* Function pointer or nested declarator: (*ident)(args) */
-        char *nested_name = NULL;
-        Type *nested_type;
+    if (peek(p) && peek(p)->kind == '(' && peek(p)->next &&
+        (peek(p)->next->kind == '*' || peek(p)->next->kind == '(' ||
+         (peek(p)->next->kind == TOK_IDENT && peek(p)->next->next &&
+          (peek(p)->next->next->kind == ')' || peek(p)->next->next->kind == '[' || peek(p)->next->next->kind == '(')))) {
         next(p); /* skip '(' */
-        nested_type = parse_declarator(p, type_void, &nested_name);
+        d->kind = DECL_NESTED;
+        d->nested = parse_declarator_node(p);
         expect(p, ')');
-        nested_type = parse_declarator_suffix(p, base);
-        if (out_name) *out_name = nested_name;
-        while (ptr_count-- > 0) {
-            type = type_pointer_to(type);
-        }
-        return type_pointer_to(nested_type);
-    }
-
-    if (peek(p) && peek(p)->kind == TOK_IDENT) {
+    } else if (peek(p) && peek(p)->kind == TOK_IDENT) {
         Token *tok = next(p);
-        if (out_name) *out_name = tok->str;
+        d->kind = DECL_IDENT;
+        d->name = tok->str;
+    } else {
+        d->kind = DECL_IDENT;
+        d->name = NULL;
     }
     skip_attribute(p);
 
-    while (ptr_count-- > 0) {
-        type = type_pointer_to(type);
+    /* Parse direct declarator suffixes: [len] and (params) */
+    while (1) {
+        if (match(p, '[')) {
+            DeclaratorSuffix *s = (DeclaratorSuffix *)c90_malloc(sizeof(DeclaratorSuffix));
+            s->kind = SUFFIX_ARRAY;
+            s->array_len = -1;
+            s->params = NULL;
+            s->is_varargs = 0;
+            if (peek(p) && peek(p)->kind != ']') {
+                AstNode *expr = parse_conditional(p);
+                s->array_len = (int)eval_const_expr(expr);
+            }
+            expect(p, ']');
+            vec_push(d->suffixes, s);
+        } else if (match(p, '(')) {
+            DeclaratorSuffix *s = (DeclaratorSuffix *)c90_malloc(sizeof(DeclaratorSuffix));
+            s->kind = SUFFIX_FUNC;
+            s->array_len = 0;
+            s->params = vec_new();
+            s->is_varargs = 0;
+
+            if (peek(p) && peek(p)->kind != ')') {
+                while (1) {
+                    if (match(p, TOK_ELLIPSIS)) {
+                        s->is_varargs = 1;
+                        break;
+                    }
+                    {
+                        StorageClass sc;
+                        Type *ptype = parse_decl_specifiers(p, &sc);
+                        char *pname = NULL;
+                        Param *param = (Param *)c90_malloc(sizeof(Param));
+                        ptype = parse_declarator(p, ptype, &pname);
+                        param->name = pname;
+                        param->type = type_decay(ptype);
+                        vec_push(s->params, param);
+                    }
+                    if (!match(p, ',')) break;
+                }
+            }
+            expect(p, ')');
+            skip_attribute(p);
+            vec_push(d->suffixes, s);
+        } else {
+            break;
+        }
     }
 
-    return parse_declarator_suffix(p, type);
+    return d;
 }
 
-static Type *parse_declarator_suffix(Parser *p, Type *type) {
-    if (match(p, '[')) {
-        int len = -1;
-        if (peek(p) && peek(p)->kind != ']') {
-            AstNode *expr = parse_conditional(p);
-            len = (int)eval_const_expr(expr);
-        }
-        expect(p, ']');
-        return type_array_of(parse_declarator_suffix(p, type), len);
+static Type *build_type_from_declarator(Declarator *d, Type *base, char **out_name) {
+    Type *type = base;
+    int i;
+    while (d->ptr_count-- > 0) {
+        type = type_pointer_to(type);
     }
-
-    if (match(p, '(')) {
-        Vector *params = vec_new();
-        int is_varargs = 0;
-
-        if (peek(p) && peek(p)->kind != ')') {
-            while (1) {
-                if (match(p, TOK_ELLIPSIS)) {
-                    is_varargs = 1;
-                    break;
-                }
-                {
-                    StorageClass sc;
-                    Type *ptype = parse_decl_specifiers(p, &sc);
-                    char *pname = NULL;
-                    Param *param = (Param *)c90_malloc(sizeof(Param));
-                    ptype = parse_declarator(p, ptype, &pname);
-                    param->name = pname;
-                    param->type = type_decay(ptype);
-                    vec_push(params, param);
-                }
-                if (!match(p, ',')) break;
-            }
+    for (i = d->suffixes->size - 1; i >= 0; i--) {
+        DeclaratorSuffix *s = (DeclaratorSuffix *)vec_get(d->suffixes, i);
+        if (s->kind == SUFFIX_ARRAY) {
+            type = type_array_of(type, s->array_len);
+        } else if (s->kind == SUFFIX_FUNC) {
+            type = type_func_new(type, s->params, s->is_varargs);
         }
-        expect(p, ')');
-        skip_attribute(p);
-        return type_func_new(type, params, is_varargs);
     }
-
+    if (d->kind == DECL_NESTED && d->nested) {
+        return build_type_from_declarator(d->nested, type, out_name);
+    }
+    if (out_name) {
+        *out_name = d->name;
+    }
     return type;
+}
+
+static Type *parse_declarator(Parser *p, Type *base, char **out_name) {
+    Declarator *d = parse_declarator_node(p);
+    return build_type_from_declarator(d, base, out_name);
 }
 
 static Type *parse_type_name(Parser *p) {
@@ -1607,6 +1653,16 @@ static AstNode *parse_compound_stmt(Parser *p) {
                     continue;
                 }
 
+                if (type->kind == TYPE_FUNC || storage == STORAGE_EXTERN) {
+                    sym = symbol_new(type->kind == TYPE_FUNC ? SYM_FUNC : SYM_VAR, name, type);
+                    sym->storage = storage;
+                    sym->is_global = 1;
+                    scope_add_symbol(sym);
+                    if (match(p, ';')) break;
+                    expect(p, ',');
+                    continue;
+                }
+
                 sym = symbol_new(SYM_VAR, name, type);
                 sym->storage = storage;
                 scope_add_symbol(sym);
@@ -1733,13 +1789,10 @@ AstNode *parser_parse(Parser *p) {
                     Param *param = (Param *)vec_get(type->params, i);
                     if (param->name) {
                         Symbol *psym = symbol_new(SYM_VAR, param->name, param->type);
-                        if (i < 8) {
-                            p->current_stack_offset += (param->type->size + 3) & ~3;
-                            psym->stack_offset = -p->current_stack_offset;
-                        } else {
-                            /* RISC-V ILP32 stack arguments */
-                            psym->stack_offset = (i - 8) * 4;
-                        }
+                        int psize = (param->type->size + 3) & ~3;
+                        if (psize < 4) psize = 4;
+                        p->current_stack_offset += psize;
+                        psym->stack_offset = -p->current_stack_offset;
                         scope_add_symbol(psym);
                         vec_push(func_node->u.func_def.params, psym);
                         vec_push(p->current_func_locals, psym);
@@ -1791,7 +1844,7 @@ AstNode *parser_parse(Parser *p) {
 #endif
 
             func_node->u.func_def.body = parse_compound_stmt(p);
-            func_node->u.func_def.stack_size = (p->current_stack_offset + 128 + 15) & ~15; /* 16-byte align */
+            func_node->u.func_def.stack_size = (p->current_stack_offset + 160 + 15) & ~15; /* 16-byte align */
 
             scope_exit();
             p->current_func = NULL;

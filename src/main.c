@@ -183,6 +183,7 @@ int main(int argc, char **argv) {
     g_config.verbose = 0;
     g_config.include_paths = vec_new();
     g_config.defines = vec_new();
+    g_config.link_objs = vec_new();
 
     type_init();
 
@@ -222,14 +223,24 @@ int main(int argc, char **argv) {
             vec_push(g_config.defines, argv[++i]);
         } else if (strncmp(argv[i], "-D", 2) == 0) {
             vec_push(g_config.defines, argv[i] + 2);
+        } else if (strncmp(argv[i], "-l", 2) == 0 || strncmp(argv[i], "-L", 2) == 0 ||
+                   strncmp(argv[i], "-Wl,", 4) == 0 || strcmp(argv[i], "-static") == 0 ||
+                   strcmp(argv[i], "-rdynamic") == 0) {
+            vec_push(g_config.link_objs, argv[i]);
         } else if (argv[i][0] == '-') {
-            fprintf(stderr, "ccia: warning: unrecognized command-line option '%s'\n", argv[i]);
+            /* unrecognized compiler flag - ignore */
         } else {
-            if (g_config.input_file) {
+            int len = (int)strlen(argv[i]);
+            if ((len > 2 && strcmp(argv[i] + len - 2, ".o") == 0) ||
+                (len > 2 && strcmp(argv[i] + len - 2, ".a") == 0) ||
+                (len > 3 && strcmp(argv[i] + len - 3, ".so") == 0)) {
+                vec_push(g_config.link_objs, argv[i]);
+            } else if (!g_config.input_file) {
+                g_config.input_file = argv[i];
+            } else {
                 fprintf(stderr, "ccia: error: multiple input files are not supported\n");
                 return 1;
             }
-            g_config.input_file = argv[i];
         }
     }
 
@@ -326,7 +337,10 @@ int main(int argc, char **argv) {
         if (g_config.output_file) {
             obj_file = g_config.output_file;
         } else {
-            obj_file = replace_extension(g_config.input_file, ".o");
+            const char *base_name = g_config.input_file;
+            const char *slash = strrchr(base_name, '/');
+            if (slash) base_name = slash + 1;
+            obj_file = replace_extension(base_name, ".o");
         }
 #ifdef TARGET_RISCV32
         sprintf(cmd, "clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -c -o %s %s", obj_file, asm_file);
@@ -347,21 +361,31 @@ int main(int argc, char **argv) {
     /* Full executable compilation and linking */
     {
         char cmd[8192];
+        char extra_objs[4096];
         char *exe_file = g_config.output_file ? g_config.output_file : "a.out";
         char *sf_obj = get_softfloat_obj(argv[0]);
+
+        extra_objs[0] = '\0';
+        for (i = 0; i < g_config.link_objs->size; i++) {
+            strcat(extra_objs, " ");
+            strcat(extra_objs, (char *)vec_get(g_config.link_objs, i));
+        }
+
 #ifdef TARGET_RISCV32
-        char *rt_obj = get_runtime_obj(argv[0]);
-        sprintf(cmd, "clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -fuse-ld=lld -nostdlib -static -o %s %s %s %s",
-                exe_file, asm_file, sf_obj, rt_obj);
-        if (system(cmd) != 0) {
-            fprintf(stderr, "ccia: linking failed\n");
-            if (need_cleanup_asm) remove(asm_file);
-            return 1;
+        {
+            char *rt_obj = get_runtime_obj(argv[0]);
+            sprintf(cmd, "clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -fuse-ld=lld -nostdlib -static -o %s %s %s %s %s",
+                    exe_file, asm_file, sf_obj, rt_obj, extra_objs);
+            if (system(cmd) != 0) {
+                fprintf(stderr, "ccia: linking failed\n");
+                if (need_cleanup_asm) remove(asm_file);
+                return 1;
+            }
         }
 #elif defined(TARGET_I386)
-        sprintf(cmd, "clang -m32 -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+        sprintf(cmd, "clang -m32 -no-pie -o %s %s %s %s -lm", exe_file, asm_file, sf_obj, extra_objs);
         if (system(cmd) != 0) {
-            sprintf(cmd, "clang -m32 -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+            sprintf(cmd, "clang -m32 -o %s %s %s %s -lm", exe_file, asm_file, sf_obj, extra_objs);
             if (system(cmd) != 0) {
                 fprintf(stderr, "ccia: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);
@@ -369,10 +393,10 @@ int main(int argc, char **argv) {
             }
         }
 #else
-        sprintf(cmd, "clang -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+        sprintf(cmd, "clang -no-pie -o %s %s %s %s -lm", exe_file, asm_file, sf_obj, extra_objs);
         if (system(cmd) != 0) {
             /* Try without -no-pie */
-            sprintf(cmd, "clang -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+            sprintf(cmd, "clang -o %s %s %s %s -lm", exe_file, asm_file, sf_obj, extra_objs);
             if (system(cmd) != 0) {
                 fprintf(stderr, "ccia: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);

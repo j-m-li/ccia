@@ -311,15 +311,22 @@ static Token *read_char_literal(Lexer *l) {
         c90_error(l->filename, start_line, "empty character constant");
     }
     
-    if (peek_char(l, 0) == '\\') {
-        next_char(l);
-        val = parse_escape_sequence(l);
-    } else {
-        val = (unsigned char)next_char(l);
+    while (l->pos < l->len && peek_char(l, 0) != '\'') {
+        int ch;
+        if (peek_char(l, 0) == '\n') {
+            c90_error(l->filename, start_line, "newline in character constant");
+        }
+        if (peek_char(l, 0) == '\\') {
+            next_char(l);
+            ch = parse_escape_sequence(l);
+        } else {
+            ch = (unsigned char)next_char(l);
+        }
+        val = (val << 8) | (ch & 0xFF);
     }
     
     if (peek_char(l, 0) != '\'') {
-        c90_error(l->filename, start_line, "multi-character constant or unclosed character constant");
+        c90_error(l->filename, start_line, "unclosed character constant");
     }
     next_char(l); /* skip closing quote */
     

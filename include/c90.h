@@ -683,6 +683,7 @@ typedef struct CodeGen {
     Vector *continue_stack;
     int scratch_base;
     int ldouble_slot;
+    int current_stack_size;
     Symbol *current_func;
 } CodeGen;
 
@@ -704,6 +705,7 @@ typedef struct Config {
     int verbose;
     Vector *include_paths;
     Vector *defines;
+    Vector *link_objs;
 } Config;
 
 extern Config g_config;

@@ -137,11 +137,23 @@ static void gen_store(CodeGen *gen, Type *type) {
         return;
     }
     if (type->kind == TYPE_STRUCT || type->kind == TYPE_UNION || type->kind == TYPE_LDOUBLE || type->size > 4) {
-        /* Copy multi-word struct/union/ldouble/double byte by byte */
-        int i;
-        for (i = 0; i < type->size; i++) {
-            emit(gen, "    lbu t0, %d(a0)", i);
-            emit(gen, "    sb t0, %d(a1)", i);
+        /* Copy multi-word struct/union/ldouble/double */
+        if (type->size <= 16) {
+            int i;
+            for (i = 0; i < type->size; i++) {
+                emit(gen, "    lbu t0, %d(a0)", i);
+                emit(gen, "    sb t0, %d(a1)", i);
+            }
+        } else {
+            char *lbl = gen_asm_label(gen, "cpy");
+            emit(gen, "    li t1, %d", type->size);
+            emit(gen, "%s:", lbl);
+            emit(gen, "    lbu t0, 0(a0)");
+            emit(gen, "    sb t0, 0(a1)");
+            emit(gen, "    addi a0, a0, 1");
+            emit(gen, "    addi a1, a1, 1");
+            emit(gen, "    addi t1, t1, -1");
+            emit(gen, "    bnez t1, %s", lbl);
         }
         return;
     }
@@ -259,7 +271,8 @@ static void gen_lval(CodeGen *gen, AstNode *node) {
 /* ========================================================================= */
 
 static int get_scratch_temp(CodeGen *gen) {
-    int off = 8 + (gen->ldouble_slot * 16);
+    int stack_size = gen->current_stack_size ? gen->current_stack_size : 160;
+    int off = -stack_size + 8 + (gen->ldouble_slot * 16);
     gen->ldouble_slot = (gen->ldouble_slot + 1) % 8;
     return off;
 }
@@ -282,47 +295,35 @@ static void gen_cast_to(CodeGen *gen, Type *from, Type *to) {
 
     if (to->kind == TYPE_DOUBLE) {
         int off = get_scratch_temp(gen);
+        emit(gen, "    mv a1, a0");
+        emit_addi(gen, "a0", "s0", off);
         if (from->kind == TYPE_FLOAT) {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __extendsfdf2");
         } else if (from->kind == TYPE_LDOUBLE) {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __trunctfdf2");
         } else if (from->is_unsigned) {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __floatunsidf");
         } else {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __floatsidf");
         }
-        emit(gen, "    addi a0, sp, %d", off);
+        emit_addi(gen, "a0", "s0", off);
         return;
     }
 
     if (to->kind == TYPE_LDOUBLE) {
         int off = get_scratch_temp(gen);
+        emit(gen, "    mv a1, a0");
+        emit_addi(gen, "a0", "s0", off);
         if (from->kind == TYPE_FLOAT) {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __extendsftf2");
         } else if (from->kind == TYPE_DOUBLE) {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __extenddftf2");
         } else if (from->is_unsigned) {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __floatunsitf");
         } else {
-            emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
             emit(gen, "    call __floatsitf");
         }
-        emit(gen, "    addi a0, sp, %d", off);
+        emit_addi(gen, "a0", "s0", off);
         return;
     }
 
@@ -360,6 +361,16 @@ static void gen_cast_to(CodeGen *gen, Type *from, Type *to) {
             emit(gen, "    srai a0, a0, 16");
         }
     }
+}
+
+static int is_multiword_arg(Type *type) {
+    if (!type) return 0;
+    if (type->kind == TYPE_STRUCT || type->kind == TYPE_UNION ||
+        type->kind == TYPE_DOUBLE || type->kind == TYPE_LDOUBLE ||
+        ((type->kind == TYPE_INT || type->kind == TYPE_LONG) && type->size > 4)) {
+        return 1;
+    }
+    return 0;
 }
 
 static void gen_expr(CodeGen *gen, AstNode *node) {
@@ -413,15 +424,15 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         } else if (node->type && node->type->kind == TYPE_DOUBLE) {
             int off = get_scratch_temp(gen);
             emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
+            emit_addi(gen, "a0", "s0", off);
             emit(gen, "    call __negdf2");
-            emit(gen, "    addi a0, sp, %d", off);
+            emit_addi(gen, "a0", "s0", off);
         } else if (node->type && node->type->kind == TYPE_LDOUBLE) {
             int off = get_scratch_temp(gen);
             emit(gen, "    mv a1, a0");
-            emit(gen, "    addi a0, sp, %d", off);
+            emit_addi(gen, "a0", "s0", off);
             emit(gen, "    call __negtf2");
-            emit(gen, "    addi a0, sp, %d", off);
+            emit_addi(gen, "a0", "s0", off);
         } else {
             emit(gen, "    neg a0, a0");
         }
@@ -558,11 +569,43 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         emit(gen, "    addi sp, sp, -4");
         emit(gen, "    sw a0, 0(sp)");
         gen_expr(gen, node->u.binop.rhs);
+        if (node->type && type_is_floating(node->type)) {
+            if (node->u.binop.rhs->type && !type_equal(node->u.binop.rhs->type, node->type)) {
+                gen_cast_to(gen, node->u.binop.rhs->type, node->type);
+            }
+        }
         emit(gen, "    mv a1, a0");
         emit(gen, "    lw a0, 0(sp)");
         emit(gen, "    addi sp, sp, 4");
 
-        if (node->kind == AST_ADD_ASSIGN) {
+        if (node->type && type_is_floating(node->type)) {
+            if (node->type->kind == TYPE_FLOAT) {
+                if (node->kind == AST_ADD_ASSIGN) emit(gen, "    call __addsf3");
+                else if (node->kind == AST_SUB_ASSIGN) emit(gen, "    call __subsf3");
+                else if (node->kind == AST_MUL_ASSIGN) emit(gen, "    call __mulsf3");
+                else if (node->kind == AST_DIV_ASSIGN) emit(gen, "    call __divsf3");
+            } else if (node->type->kind == TYPE_DOUBLE) {
+                int off = get_scratch_temp(gen);
+                emit(gen, "    mv a2, a1");
+                emit(gen, "    mv a1, a0");
+                emit_addi(gen, "a0", "s0", off);
+                if (node->kind == AST_ADD_ASSIGN) emit(gen, "    call __adddf3");
+                else if (node->kind == AST_SUB_ASSIGN) emit(gen, "    call __subdf3");
+                else if (node->kind == AST_MUL_ASSIGN) emit(gen, "    call __muldf3");
+                else if (node->kind == AST_DIV_ASSIGN) emit(gen, "    call __divdf3");
+                emit_addi(gen, "a0", "s0", off);
+            } else if (node->type->kind == TYPE_LDOUBLE) {
+                int off = get_scratch_temp(gen);
+                emit(gen, "    mv a2, a1");
+                emit(gen, "    mv a1, a0");
+                emit_addi(gen, "a0", "s0", off);
+                if (node->kind == AST_ADD_ASSIGN) emit(gen, "    call __addtf3");
+                else if (node->kind == AST_SUB_ASSIGN) emit(gen, "    call __subtf3");
+                else if (node->kind == AST_MUL_ASSIGN) emit(gen, "    call __multf3");
+                else if (node->kind == AST_DIV_ASSIGN) emit(gen, "    call __divtf3");
+                emit_addi(gen, "a0", "s0", off);
+            }
+        } else if (node->kind == AST_ADD_ASSIGN) {
             if (step > 1) {
                 emit(gen, "    addi sp, sp, -4");
                 emit(gen, "    sw a0, 0(sp)");
@@ -666,13 +709,33 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
     case AST_CALL: {
         Vector *args = node->u.call.args;
         int num_args = args ? args->size : 0;
-        int stack_args_count = (num_args > 8) ? (num_args - 8) : 0;
-        int stack_args_bytes = stack_args_count * 4;
-        int aligned_stack_bytes = (stack_args_bytes + 15) & ~15;
-        int pad_bytes = aligned_stack_bytes - stack_args_bytes;
         int i;
-
+        int total_words = 0;
+        int stack_words_count = 0;
+        int stack_bytes = 0;
+        int aligned_stack_bytes = 0;
+        int pad_bytes = 0;
         int is_direct = (node->u.call.func->kind == AST_VAR && node->u.call.func->u.sym->kind == SYM_FUNC);
+        int *arg_words = (int *)malloc((num_args > 0 ? num_args : 1) * sizeof(int));
+
+        for (i = 0; i < num_args; i++) {
+            AstNode *arg = (AstNode *)vec_get(args, i);
+            int words = 1;
+            if (arg->type && is_multiword_arg(arg->type)) {
+                int sz = (arg->type->size + 3) & ~3;
+                words = sz / 4;
+                if (words < 1) words = 1;
+            }
+            arg_words[i] = words;
+            total_words += words;
+        }
+
+        if (total_words > 8) {
+            stack_words_count = total_words - 8;
+            stack_bytes = stack_words_count * 4;
+            aligned_stack_bytes = (stack_bytes + 15) & ~15;
+            pad_bytes = aligned_stack_bytes - stack_bytes;
+        }
 
         if (is_direct) {
             const char *fname = node->u.call.func->u.sym->name;
@@ -680,10 +743,12 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 if (args && args->size > 0) {
                     gen_expr(gen, (AstNode *)vec_get(args, 0));
                 }
+                free(arg_words);
                 return;
             }
             if (strcmp(fname, "__builtin_constant_p") == 0) {
                 emit(gen, "    li a0, 0");
+                free(arg_words);
                 return;
             }
             if (strcmp(fname, "__builtin_va_start") == 0) {
@@ -698,6 +763,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                     emit(gen, "    sw a0, 0(a1)");
                     emit(gen, "    addi sp, sp, 4");
                 }
+                free(arg_words);
                 return;
             }
             if (strcmp(fname, "__builtin_va_copy") == 0) {
@@ -710,9 +776,11 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                     emit(gen, "    sw a1, 0(a0)");
                     emit(gen, "    addi sp, sp, 4");
                 }
+                free(arg_words);
                 return;
             }
             if (strcmp(fname, "__builtin_va_end") == 0) {
+                free(arg_words);
                 return;
             }
         } else {
@@ -722,16 +790,25 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             emit(gen, "    sw a0, 0(sp)");
         }
 
-        if (num_args <= 8) {
-            /* Evaluate args forward, push each */
+        if (total_words <= 8) {
+            /* Evaluate args forward, push each word */
             for (i = 0; i < num_args; i++) {
                 AstNode *arg = (AstNode *)vec_get(args, i);
                 gen_expr(gen, arg);
-                emit(gen, "    addi sp, sp, -4");
-                emit(gen, "    sw a0, 0(sp)");
+                if (arg->type && is_multiword_arg(arg->type)) {
+                    int w;
+                    for (w = 0; w < arg_words[i]; w++) {
+                        emit(gen, "    lw t0, %d(a0)", w * 4);
+                        emit(gen, "    addi sp, sp, -4");
+                        emit(gen, "    sw t0, 0(sp)");
+                    }
+                } else {
+                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    sw a0, 0(sp)");
+                }
             }
-            /* Pop into a{num_args-1} down to a0 */
-            for (i = num_args - 1; i >= 0; i--) {
+            /* Pop into a{total_words-1} down to a0 */
+            for (i = total_words - 1; i >= 0; i--) {
                 emit(gen, "    lw a%d, 0(sp)", i);
                 emit(gen, "    addi sp, sp, 4");
             }
@@ -741,34 +818,44 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 emit(gen, "    addi sp, sp, 4");
             }
         } else {
-            /* 16-byte stack padding */
-            if (pad_bytes > 0) {
-                emit(gen, "    addi sp, sp, -%d", pad_bytes);
-            }
-            /* Push stack args arg[N-1] down to arg[8] */
-            for (i = num_args - 1; i >= 8; i--) {
+            /* Evaluate all args forward and push all words into a temporary frame */
+            for (i = 0; i < num_args; i++) {
                 AstNode *arg = (AstNode *)vec_get(args, i);
                 gen_expr(gen, arg);
-                emit(gen, "    addi sp, sp, -4");
-                emit(gen, "    sw a0, 0(sp)");
+                if (arg->type && is_multiword_arg(arg->type)) {
+                    int w;
+                    for (w = 0; w < arg_words[i]; w++) {
+                        emit(gen, "    lw t0, %d(a0)", w * 4);
+                        emit(gen, "    addi sp, sp, -4");
+                        emit(gen, "    sw t0, 0(sp)");
+                    }
+                } else {
+                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    sw a0, 0(sp)");
+                }
             }
-            /* Push register args arg[7] down to arg[0] */
-            for (i = 7; i >= 0; i--) {
-                AstNode *arg = (AstNode *)vec_get(args, i);
-                gen_expr(gen, arg);
-                emit(gen, "    addi sp, sp, -4");
-                emit(gen, "    sw a0, 0(sp)");
-            }
-            /* Pop a0..a7 */
+
+            /* Load register words 0..7 into a0..a7 */
             for (i = 0; i < 8; i++) {
-                emit(gen, "    lw a%d, 0(sp)", i);
-                emit(gen, "    addi sp, sp, 4");
+                int offset = (total_words - 1 - i) * 4;
+                emit(gen, "    lw a%d, %d(sp)", i, offset);
             }
+
             if (!is_direct) {
-                /* Load function pointer from above stack arguments */
-                emit(gen, "    lw t0, %d(sp)", aligned_stack_bytes);
+                emit(gen, "    lw t0, %d(sp)", total_words * 4);
+            }
+
+            /* Reverse the stack words so first stack arg is at 0(sp) */
+            for (i = 0; i < stack_words_count / 2; i++) {
+                int off_a = i * 4;
+                int off_b = (stack_words_count - 1 - i) * 4;
+                emit(gen, "    lw t1, %d(sp)", off_a);
+                emit(gen, "    lw t2, %d(sp)", off_b);
+                emit(gen, "    sw t2, %d(sp)", off_a);
+                emit(gen, "    sw t1, %d(sp)", off_b);
             }
         }
+        free(arg_words);
 
         if (is_direct) {
             emit(gen, "    call %s", node->u.call.func->u.sym->name);
@@ -776,12 +863,17 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             emit(gen, "    jalr t0");
         }
 
-        if (num_args > 8) {
-            if (!is_direct) {
-                emit(gen, "    addi sp, sp, %d", aligned_stack_bytes + 4);
-            } else {
-                emit(gen, "    addi sp, sp, %d", aligned_stack_bytes);
-            }
+        if (total_words > 8) {
+            int total_pushed_bytes = (total_words + (is_direct ? 0 : 1)) * 4;
+            emit(gen, "    addi sp, sp, %d", total_pushed_bytes);
+        }
+
+        if (node->type && node->type->kind == TYPE_DOUBLE) {
+            int off = get_scratch_temp(gen);
+            emit_addi(gen, "t0", "s0", off);
+            emit(gen, "    sw a0, 0(t0)");
+            emit(gen, "    sw a1, 4(t0)");
+            emit_addi(gen, "a0", "s0", off);
         }
         return;
     }
@@ -795,9 +887,10 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         emit(gen, "    sw a0, 0(sp)");
         if (node->u.va_arg.ap->kind == AST_VAR) {
             Symbol *sym = node->u.va_arg.ap->u.sym;
-            emit(gen, "    lw t0, %d(s0)", sym->stack_offset);
+            emit_addi(gen, "a1", "s0", sym->stack_offset);
+            emit(gen, "    lw t0, 0(a1)");
             emit(gen, "    addi t0, t0, %d", aligned_size);
-            emit(gen, "    sw t0, %d(s0)", sym->stack_offset);
+            emit(gen, "    sw t0, 0(a1)");
         } else {
             gen_lval(gen, node->u.va_arg.ap);
             emit(gen, "    lw t0, 0(a0)");
@@ -806,7 +899,10 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         }
         emit(gen, "    lw a0, 0(sp)");
         emit(gen, "    addi sp, sp, 4");
-        if (size == 1) {
+        if (node->type && (node->type->kind == TYPE_STRUCT || node->type->kind == TYPE_UNION ||
+                           node->type->kind == TYPE_DOUBLE || node->type->kind == TYPE_LDOUBLE)) {
+            /* Keep a0 as pointer to the multi-word value in va_list buffer */
+        } else if (size == 1) {
             if (node->type && node->type->is_unsigned) emit(gen, "    lbu a0, 0(a0)");
             else emit(gen, "    lb a0, 0(a0)");
         } else if (size == 2) {
@@ -878,48 +974,43 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 default: break;
                 }
             } else if (common_type->kind == TYPE_DOUBLE) {
-                int off = get_scratch_temp(gen);
-                emit(gen, "    mv a2, a1");
-                emit(gen, "    mv a1, a0");
-                emit(gen, "    addi a0, sp, %d", off);
                 switch (node->kind) {
-                case AST_ADD: emit(gen, "    call __adddf3"); emit(gen, "    addi a0, sp, %d", off); break;
-                case AST_SUB: emit(gen, "    call __subdf3"); emit(gen, "    addi a0, sp, %d", off); break;
-                case AST_MUL: emit(gen, "    call __muldf3"); emit(gen, "    addi a0, sp, %d", off); break;
-                case AST_DIV: emit(gen, "    call __divdf3"); emit(gen, "    addi a0, sp, %d", off); break;
+                case AST_ADD:
+                case AST_SUB:
+                case AST_MUL:
+                case AST_DIV: {
+                    int off = get_scratch_temp(gen);
+                    emit(gen, "    mv a2, a1");
+                    emit(gen, "    mv a1, a0");
+                    emit_addi(gen, "a0", "s0", off);
+                    if (node->kind == AST_ADD) emit(gen, "    call __adddf3");
+                    else if (node->kind == AST_SUB) emit(gen, "    call __subdf3");
+                    else if (node->kind == AST_MUL) emit(gen, "    call __muldf3");
+                    else if (node->kind == AST_DIV) emit(gen, "    call __divdf3");
+                    emit_addi(gen, "a0", "s0", off);
+                    break;
+                }
                 case AST_EQ:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __eqdf2");
                     emit(gen, "    seqz a0, a0");
                     break;
                 case AST_NE:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __nedf2");
                     emit(gen, "    snez a0, a0");
                     break;
                 case AST_LT:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __ltdf2");
                     emit(gen, "    slti a0, a0, 0");
                     break;
                 case AST_LE:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __ledf2");
                     emit(gen, "    slti a0, a0, 1");
                     break;
                 case AST_GT:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __gtdf2");
                     emit(gen, "    slt a0, zero, a0");
                     break;
                 case AST_GE:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __gedf2");
                     emit(gen, "    slt a0, a0, zero");
                     emit(gen, "    xori a0, a0, 1");
@@ -927,48 +1018,43 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 default: break;
                 }
             } else if (common_type->kind == TYPE_LDOUBLE) {
-                int off = get_scratch_temp(gen);
-                emit(gen, "    mv a2, a1");
-                emit(gen, "    mv a1, a0");
-                emit(gen, "    addi a0, sp, %d", off);
                 switch (node->kind) {
-                case AST_ADD: emit(gen, "    call __addtf3"); emit(gen, "    addi a0, sp, %d", off); break;
-                case AST_SUB: emit(gen, "    call __subtf3"); emit(gen, "    addi a0, sp, %d", off); break;
-                case AST_MUL: emit(gen, "    call __multf3"); emit(gen, "    addi a0, sp, %d", off); break;
-                case AST_DIV: emit(gen, "    call __divtf3"); emit(gen, "    addi a0, sp, %d", off); break;
+                case AST_ADD:
+                case AST_SUB:
+                case AST_MUL:
+                case AST_DIV: {
+                    int off = get_scratch_temp(gen);
+                    emit(gen, "    mv a2, a1");
+                    emit(gen, "    mv a1, a0");
+                    emit_addi(gen, "a0", "s0", off);
+                    if (node->kind == AST_ADD) emit(gen, "    call __addtf3");
+                    else if (node->kind == AST_SUB) emit(gen, "    call __subtf3");
+                    else if (node->kind == AST_MUL) emit(gen, "    call __multf3");
+                    else if (node->kind == AST_DIV) emit(gen, "    call __divtf3");
+                    emit_addi(gen, "a0", "s0", off);
+                    break;
+                }
                 case AST_EQ:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __eqtf2");
                     emit(gen, "    seqz a0, a0");
                     break;
                 case AST_NE:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __netf2");
                     emit(gen, "    snez a0, a0");
                     break;
                 case AST_LT:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __lttf2");
                     emit(gen, "    slti a0, a0, 0");
                     break;
                 case AST_LE:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __letf2");
                     emit(gen, "    slti a0, a0, 1");
                     break;
                 case AST_GT:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __gttf2");
                     emit(gen, "    slt a0, zero, a0");
                     break;
                 case AST_GE:
-                    emit(gen, "    mv a0, a1");
-                    emit(gen, "    mv a1, a2");
                     emit(gen, "    call __getf2");
                     emit(gen, "    slt a0, a0, zero");
                     emit(gen, "    xori a0, a0, 1");
@@ -1355,6 +1441,16 @@ static void gen_stmt(CodeGen *gen, AstNode *node) {
     case AST_RETURN:
         if (node->u.return_stmt.expr) {
             gen_expr(gen, node->u.return_stmt.expr);
+            if (gen->current_func && gen->current_func->type && gen->current_func->type->base) {
+                Type *ret_type = gen->current_func->type->base;
+                if (!type_equal(node->u.return_stmt.expr->type, ret_type)) {
+                    gen_cast_to(gen, node->u.return_stmt.expr->type, ret_type);
+                }
+                if (ret_type->kind == TYPE_DOUBLE) {
+                    emit(gen, "    lw a1, 4(a0)");
+                    emit(gen, "    lw a0, 0(a0)");
+                }
+            }
         }
         if (gen->func_ret_label) {
             emit(gen, "    j %s", gen->func_ret_label);
@@ -1530,12 +1626,12 @@ static void gen_globals(CodeGen *gen, Vector *globals) {
 
         if (sym->init) {
             emit(gen, "    .data");
-            emit(gen, "    .align %d", sym->type->align);
+            emit(gen, "    .balign %d", sym->type->align > 0 ? sym->type->align : 4);
             emit(gen, "%s:", gname);
             gen_global_init(gen, sym->init, sym->type);
         } else {
             emit(gen, "    .bss");
-            emit(gen, "    .align %d", sym->type->align);
+            emit(gen, "    .balign %d", sym->type->align > 0 ? sym->type->align : 4);
             emit(gen, "%s:", gname);
             emit(gen, "    .zero %d", sym->type->size > 0 ? sym->type->size : 4);
         }
@@ -1588,6 +1684,7 @@ static void gen_func_def(CodeGen *gen, AstNode *func_node) {
 
     gen->func_ret_label = gen_asm_label(gen, "ret");
     gen->current_func = sym;
+    gen->current_stack_size = stack_size;
 
     emit(gen, "    .text");
     if (sym->storage != STORAGE_STATIC) {
@@ -1602,18 +1699,37 @@ static void gen_func_def(CodeGen *gen, AstNode *func_node) {
     emit(gen, "    sw s0, 4(sp)");
     emit_addi(gen, "s0", "sp", stack_size);
 
-    /* Spill incoming argument registers a0..a7 to their local stack slots */
+    /* Spill incoming arguments to their local stack slots */
     {
         Vector *params = func_node->u.func_def.params;
         if (params) {
-            for (i = 0; i < params->size && i < 8; i++) {
+            int arg_reg = 0;
+            int stack_arg_offset = 0;
+            for (i = 0; i < params->size; i++) {
                 Symbol *psym = (Symbol *)vec_get(params, i);
                 if (psym) {
-                    if (psym->stack_offset >= -2048 && psym->stack_offset <= 2047) {
-                        emit(gen, "    sw a%d, %d(s0)", i, psym->stack_offset);
-                    } else {
-                        emit_addi(gen, "t0", "s0", psym->stack_offset);
-                        emit(gen, "    sw a%d, 0(t0)", i);
+                    int psize = (psym->type->size + 3) & ~3;
+                    int words = psize / 4;
+                    int w;
+                    if (words < 1) words = 1;
+                    for (w = 0; w < words; w++) {
+                        int slot_offset = psym->stack_offset + w * 4;
+                        if (arg_reg < 8) {
+                            if (slot_offset >= -2048 && slot_offset <= 2047) {
+                                emit(gen, "    sw a%d, %d(s0)", arg_reg, slot_offset);
+                            } else {
+                                emit_addi(gen, "t0", "s0", slot_offset);
+                                emit(gen, "    sw a%d, 0(t0)", arg_reg);
+                            }
+                            arg_reg++;
+                        } else {
+                            /* Passed on stack by caller at stack_arg_offset(s0) */
+                            emit_addi(gen, "t1", "s0", stack_arg_offset);
+                            emit(gen, "    lw t0, 0(t1)");
+                            emit_addi(gen, "t1", "s0", slot_offset);
+                            emit(gen, "    sw t0, 0(t1)");
+                            stack_arg_offset += 4;
+                        }
                     }
                 }
             }
@@ -1632,6 +1748,7 @@ static void gen_func_def(CodeGen *gen, AstNode *func_node) {
 
     /* Function Epilogue */
     emit(gen, "%s:", gen->func_ret_label);
+    emit_addi(gen, "sp", "s0", -stack_size);
     emit(gen, "    lw ra, 0(sp)");
     emit(gen, "    lw s0, 4(sp)");
     emit_addi(gen, "sp", "sp", stack_size);

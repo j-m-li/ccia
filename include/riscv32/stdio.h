@@ -5,6 +5,15 @@
 #include <stdarg.h>
 
 #define EOF (-1)
+#define BUFSIZ 8192
+#define FILENAME_MAX 4096
+#define FOPEN_MAX 256
+#define TMP_MAX 238328
+#define L_tmpnam 20
+#define _IOFBF 0
+#define _IOLBF 1
+#define _IONBF 2
+
 #define SEEK_SET 0
 #define SEEK_CUR 1
 #define SEEK_END 2
