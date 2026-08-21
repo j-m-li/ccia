@@ -636,6 +636,7 @@ AstNode *ast_cast(Type *target, AstNode *operand, const char *file, int line);
 AstNode *ast_call(AstNode *func, Vector *args, const char *file, int line);
 AstNode *ast_member(AstNode *target, const char *member, int is_arrow, const char *file, int line);
 long eval_const_expr(AstNode *n);
+int eval_const_float_expr(AstNode *n, unsigned int words[4], Type *type);
 
 /* ========================================================================= */
 /* Parser                                                                    */

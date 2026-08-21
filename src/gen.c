@@ -1425,23 +1425,28 @@ static void gen_global_init(CodeGen *gen, Initializer *init, Type *type) {
             }
             return;
         }
+        if (type && type_is_floating(type)) {
+            unsigned int words[4];
+            words[0] = words[1] = words[2] = words[3] = 0;
+            eval_const_float_expr(e, words, type);
+            if (type->kind == TYPE_FLOAT) {
+                emit(gen, "    .long %u", words[0]);
+            } else if (type->kind == TYPE_LDOUBLE) {
+                emit(gen, "    .long %u", words[0]);
+                emit(gen, "    .long %u", words[1]);
+                emit(gen, "    .long %u", words[2]);
+                emit(gen, "    .long %u", words[3]);
+            } else {
+                emit(gen, "    .long %u", words[0]);
+                emit(gen, "    .long %u", words[1]);
+            }
+            return;
+        }
         if (e->kind == AST_INT_LIT || e->kind == AST_CHAR_LIT) {
             if (type->size == 1) emit(gen, "    .byte %ld", e->u.int_val.val);
             else if (type->size == 2) emit(gen, "    .value %ld", e->u.int_val.val);
             else if (type->size == 4) emit(gen, "    .long %ld", e->u.int_val.val);
             else emit(gen, "    .quad %ld", e->u.int_val.val);
-        } else if (e->kind == AST_FLOAT_LIT) {
-            if (type && type->kind == TYPE_FLOAT) {
-                emit(gen, "    .long %u", e->u.float_val.u128_words[0]);
-            } else if (type && type->kind == TYPE_LDOUBLE) {
-                emit(gen, "    .long %u", e->u.float_val.u128_words[0]);
-                emit(gen, "    .long %u", e->u.float_val.u128_words[1]);
-                emit(gen, "    .long %u", e->u.float_val.u128_words[2]);
-                emit(gen, "    .long %u", e->u.float_val.u128_words[3]);
-            } else {
-                emit(gen, "    .long %u", e->u.float_val.u128_words[0]);
-                emit(gen, "    .long %u", e->u.float_val.u128_words[1]);
-            }
         } else if (e->kind == AST_STR_LIT) {
             emit(gen, "    .quad %s", e->u.str_val.label);
         } else if (e->kind == AST_VAR) {

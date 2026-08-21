@@ -966,6 +966,133 @@ long eval_const_expr(AstNode *n) {
     }
 }
 
+int eval_const_float_expr(AstNode *n, unsigned int words[4], Type *type) {
+    if (!n || !type) return 0;
+    words[0] = words[1] = words[2] = words[3] = 0;
+
+    if (n->kind == AST_FLOAT_LIT) {
+        words[0] = n->u.float_val.u128_words[0];
+        words[1] = n->u.float_val.u128_words[1];
+        words[2] = n->u.float_val.u128_words[2];
+        words[3] = n->u.float_val.u128_words[3];
+        return 1;
+    }
+
+    if (n->kind == AST_INT_LIT || n->kind == AST_CHAR_LIT) {
+        long val = n->u.int_val.val;
+        if (type->kind == TYPE_FLOAT) {
+            float f = (float)val;
+            memcpy(&words[0], &f, 4);
+        } else if (type->kind == TYPE_DOUBLE) {
+            double d = (double)val;
+            memcpy(&words[0], &d, 8);
+        } else if (type->kind == TYPE_LDOUBLE) {
+            long double ld = (long double)val;
+            memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16);
+        }
+        return 1;
+    }
+
+    if (n->kind == AST_POS) {
+        return eval_const_float_expr(n->u.unop.operand, words, type);
+    }
+
+    if (n->kind == AST_NEG) {
+        int r = eval_const_float_expr(n->u.unop.operand, words, type);
+        if (type->kind == TYPE_FLOAT) words[0] ^= 0x80000000U;
+        else if (type->kind == TYPE_DOUBLE) words[1] ^= 0x80000000U;
+        else if (type->kind == TYPE_LDOUBLE) words[3] ^= 0x80000000U;
+        return r;
+    }
+
+    if (n->kind == AST_CAST) {
+        unsigned int op_words[4];
+        Type *src_type = n->u.cast.operand->type ? n->u.cast.operand->type : type_int;
+        op_words[0] = op_words[1] = op_words[2] = op_words[3] = 0;
+        if (type_is_floating(src_type)) {
+            eval_const_float_expr(n->u.cast.operand, op_words, src_type);
+            if (src_type->kind == TYPE_FLOAT) {
+                float f; memcpy(&f, &op_words[0], 4);
+                if (type->kind == TYPE_FLOAT) { memcpy(&words[0], &f, 4); }
+                else if (type->kind == TYPE_DOUBLE) { double d = (double)f; memcpy(&words[0], &d, 8); }
+                else if (type->kind == TYPE_LDOUBLE) { long double ld = (long double)f; memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+            } else if (src_type->kind == TYPE_DOUBLE) {
+                double d; memcpy(&d, &op_words[0], 8);
+                if (type->kind == TYPE_FLOAT) { float f = (float)d; memcpy(&words[0], &f, 4); }
+                else if (type->kind == TYPE_DOUBLE) { memcpy(&words[0], &d, 8); }
+                else if (type->kind == TYPE_LDOUBLE) { long double ld = (long double)d; memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+            } else if (src_type->kind == TYPE_LDOUBLE) {
+                long double ld; memcpy(&ld, &op_words[0], sizeof(long double) <= 16 ? sizeof(long double) : 16);
+                if (type->kind == TYPE_FLOAT) { float f = (float)ld; memcpy(&words[0], &f, 4); }
+                else if (type->kind == TYPE_DOUBLE) { double d = (double)ld; memcpy(&words[0], &d, 8); }
+                else if (type->kind == TYPE_LDOUBLE) { memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+            }
+        } else {
+            long l = eval_const_expr(n->u.cast.operand);
+            if (type->kind == TYPE_FLOAT) { float f = (float)l; memcpy(&words[0], &f, 4); }
+            else if (type->kind == TYPE_DOUBLE) { double d = (double)l; memcpy(&words[0], &d, 8); }
+            else if (type->kind == TYPE_LDOUBLE) { long double ld = (long double)l; memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+        }
+        return 1;
+    }
+
+    if (n->kind == AST_ADD || n->kind == AST_SUB || n->kind == AST_MUL || n->kind == AST_DIV) {
+        unsigned int w_lhs[4], w_rhs[4];
+        Type *t = type_max(n->u.binop.lhs->type, n->u.binop.rhs->type);
+        if (!t || !type_is_floating(t)) t = type;
+        w_lhs[0] = w_lhs[1] = w_lhs[2] = w_lhs[3] = 0;
+        w_rhs[0] = w_rhs[1] = w_rhs[2] = w_rhs[3] = 0;
+        eval_const_float_expr(n->u.binop.lhs, w_lhs, t);
+        eval_const_float_expr(n->u.binop.rhs, w_rhs, t);
+
+        if (t->kind == TYPE_FLOAT) {
+            float a, b, r = 0.0f;
+            memcpy(&a, &w_lhs[0], 4);
+            memcpy(&b, &w_rhs[0], 4);
+            if (n->kind == AST_ADD) r = a + b;
+            else if (n->kind == AST_SUB) r = a - b;
+            else if (n->kind == AST_MUL) r = a * b;
+            else if (n->kind == AST_DIV) r = (b != 0.0f) ? a / b : 0.0f;
+            if (type->kind == TYPE_FLOAT) { memcpy(&words[0], &r, 4); }
+            else if (type->kind == TYPE_DOUBLE) { double d = (double)r; memcpy(&words[0], &d, 8); }
+            else if (type->kind == TYPE_LDOUBLE) { long double ld = (long double)r; memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+        } else if (t->kind == TYPE_DOUBLE) {
+            double a, b, r = 0.0;
+            memcpy(&a, &w_lhs[0], 8);
+            memcpy(&b, &w_rhs[0], 8);
+            if (n->kind == AST_ADD) r = a + b;
+            else if (n->kind == AST_SUB) r = a - b;
+            else if (n->kind == AST_MUL) r = a * b;
+            else if (n->kind == AST_DIV) r = (b != 0.0) ? a / b : 0.0;
+            if (type->kind == TYPE_FLOAT) { float f = (float)r; memcpy(&words[0], &f, 4); }
+            else if (type->kind == TYPE_DOUBLE) { memcpy(&words[0], &r, 8); }
+            else if (type->kind == TYPE_LDOUBLE) { long double ld = (long double)r; memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+        } else if (t->kind == TYPE_LDOUBLE) {
+            long double a, b, r = 0.0L;
+            memcpy(&a, &w_lhs[0], sizeof(long double) <= 16 ? sizeof(long double) : 16);
+            memcpy(&b, &w_rhs[0], sizeof(long double) <= 16 ? sizeof(long double) : 16);
+            if (n->kind == AST_ADD) r = a + b;
+            else if (n->kind == AST_SUB) r = a - b;
+            else if (n->kind == AST_MUL) r = a * b;
+            else if (n->kind == AST_DIV) r = (b != 0.0L) ? a / b : 0.0L;
+            if (type->kind == TYPE_FLOAT) { float f = (float)r; memcpy(&words[0], &f, 4); }
+            else if (type->kind == TYPE_DOUBLE) { double d = (double)r; memcpy(&words[0], &d, 8); }
+            else if (type->kind == TYPE_LDOUBLE) { memcpy(&words[0], &r, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+        }
+        return 1;
+    }
+
+    if (n->kind == AST_VAR && n->u.sym && n->u.sym->kind == SYM_ENUM_CONST) {
+        long val = n->u.sym->enum_value;
+        if (type->kind == TYPE_FLOAT) { float f = (float)val; memcpy(&words[0], &f, 4); }
+        else if (type->kind == TYPE_DOUBLE) { double d = (double)val; memcpy(&words[0], &d, 8); }
+        else if (type->kind == TYPE_LDOUBLE) { long double ld = (long double)val; memcpy(&words[0], &ld, sizeof(long double) <= 16 ? sizeof(long double) : 16); }
+        return 1;
+    }
+
+    return 0;
+}
+
 static Type *parse_enum_body(Parser *p, const char *tag) {
     Type *et = type_enum_new(tag);
     int current_val = 0;
