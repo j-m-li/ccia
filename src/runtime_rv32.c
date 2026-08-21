@@ -153,35 +153,197 @@ __attribute__((naked)) void _start(void) {
 }
 
 /* ========================================================================= */
-/* Memory Allocation (brk-based heap allocator)                              */
+/* Memory Allocation (Full Coalescing Free-List Allocator)                   */
 /* ========================================================================= */
 
-static void *heap_curr = NULL;
+#define BLOCK_MAGIC 0x43434941 /* "CCIA" */
 
-void *malloc(size_t size) {
-    void *prev;
-    size_t aligned_size;
-    if (size == 0) return NULL;
-    aligned_size = (size + 15) & ~15; /* 16-byte alignment */
+typedef struct BlockHeader {
+    size_t size;                   /* Payload size in bytes (16-byte aligned) */
+    int is_free;                   /* 1 if free, 0 if allocated */
+    struct BlockHeader *next_phys; /* Next physically adjacent block */
+    struct BlockHeader *prev_phys; /* Previous physically adjacent block */
+    struct BlockHeader *next_free; /* Next block in explicit free list */
+    struct BlockHeader *prev_free; /* Previous block in explicit free list */
+    unsigned int magic;            /* Magic number for validation */
+    unsigned int pad;              /* Pad to 32 bytes for 16-byte alignment */
+} BlockHeader;
 
-    if (!heap_curr) {
-        heap_curr = (void *)sys_call1(SYS_brk, 0);
+static BlockHeader *free_list_head = NULL;
+static BlockHeader *first_phys_block = NULL;
+static BlockHeader *last_phys_block = NULL;
+
+static void insert_free_block(BlockHeader *block) {
+    block->is_free = 1;
+    block->next_free = free_list_head;
+    block->prev_free = NULL;
+    if (free_list_head) {
+        free_list_head->prev_free = block;
     }
-    prev = heap_curr;
-    heap_curr = (void *)sys_call1(SYS_brk, (long)heap_curr + (long)aligned_size);
-    if (heap_curr == prev) {
+    free_list_head = block;
+}
+
+static void remove_free_block(BlockHeader *block) {
+    if (block->prev_free) {
+        block->prev_free->next_free = block->next_free;
+    } else {
+        free_list_head = block->next_free;
+    }
+    if (block->next_free) {
+        block->next_free->prev_free = block->prev_free;
+    }
+    block->next_free = NULL;
+    block->prev_free = NULL;
+    block->is_free = 0;
+}
+
+static void split_block(BlockHeader *block, size_t size) {
+    if (block->size >= size + sizeof(BlockHeader) + 16) {
+        BlockHeader *rem = (BlockHeader *)((char *)(block + 1) + size);
+        rem->size = block->size - size - sizeof(BlockHeader);
+        rem->is_free = 1;
+        rem->magic = BLOCK_MAGIC;
+        rem->pad = 0;
+        rem->next_phys = block->next_phys;
+        rem->prev_phys = block;
+        rem->next_free = NULL;
+        rem->prev_free = NULL;
+
+        if (block->next_phys) {
+            block->next_phys->prev_phys = rem;
+        } else {
+            last_phys_block = rem;
+        }
+        block->next_phys = rem;
+        block->size = size;
+
+        insert_free_block(rem);
+    }
+}
+
+static BlockHeader *request_space(size_t needed_payload_size) {
+    size_t min_alloc = 65536; /* 64 KB chunk */
+    size_t total_needed = needed_payload_size + sizeof(BlockHeader);
+    size_t alloc_chunk = total_needed > min_alloc ? ((total_needed + 4095) & ~4095) : min_alloc;
+    long cur_brk, aligned_brk, new_brk;
+    BlockHeader *block;
+
+    cur_brk = sys_call1(SYS_brk, 0);
+    aligned_brk = (cur_brk + 15) & ~15;
+    if (aligned_brk != cur_brk) {
+        sys_call1(SYS_brk, aligned_brk);
+    }
+
+    new_brk = sys_call1(SYS_brk, aligned_brk + (long)alloc_chunk);
+    if (new_brk <= aligned_brk) {
         return NULL; /* Out of memory */
     }
-    return prev;
+
+    block = (BlockHeader *)aligned_brk;
+    block->size = alloc_chunk - sizeof(BlockHeader);
+    block->is_free = 1;
+    block->magic = BLOCK_MAGIC;
+    block->pad = 0;
+    block->next_free = NULL;
+    block->prev_free = NULL;
+    block->prev_phys = last_phys_block;
+    block->next_phys = NULL;
+
+    if (last_phys_block) {
+        last_phys_block->next_phys = block;
+    }
+    if (!first_phys_block) {
+        first_phys_block = block;
+    }
+    last_phys_block = block;
+
+    insert_free_block(block);
+
+    /* If previous physical block is free, coalesce */
+    if (block->prev_phys && block->prev_phys->is_free) {
+        BlockHeader *prev = block->prev_phys;
+        remove_free_block(block);
+        prev->size += sizeof(BlockHeader) + block->size;
+        prev->next_phys = block->next_phys;
+        if (block->next_phys) {
+            block->next_phys->prev_phys = prev;
+        } else {
+            last_phys_block = prev;
+        }
+        return prev;
+    }
+
+    return block;
+}
+
+void *malloc(size_t size) {
+    size_t aligned_size;
+    BlockHeader *curr;
+
+    if (size == 0) return NULL;
+    aligned_size = (size + 15) & ~15; /* 16-byte aligned payload */
+
+    curr = free_list_head;
+    while (curr) {
+        if (curr->size >= aligned_size) {
+            break;
+        }
+        curr = curr->next_free;
+    }
+
+    if (!curr) {
+        curr = request_space(aligned_size);
+        if (!curr) return NULL;
+    }
+
+    remove_free_block(curr);
+    split_block(curr, aligned_size);
+    return (void *)(curr + 1);
 }
 
 void free(void *ptr) {
-    (void)ptr;
+    BlockHeader *block;
+    if (!ptr) return;
+
+    block = ((BlockHeader *)ptr) - 1;
+    if (block->magic != BLOCK_MAGIC || block->is_free) {
+        return; /* Prevent corruption or double free */
+    }
+
+    insert_free_block(block);
+
+    /* Coalesce with next physical block */
+    if (block->next_phys && block->next_phys->is_free) {
+        BlockHeader *next = block->next_phys;
+        remove_free_block(next);
+        block->size += sizeof(BlockHeader) + next->size;
+        block->next_phys = next->next_phys;
+        if (next->next_phys) {
+            next->next_phys->prev_phys = block;
+        } else {
+            last_phys_block = block;
+        }
+    }
+
+    /* Coalesce with previous physical block */
+    if (block->prev_phys && block->prev_phys->is_free) {
+        BlockHeader *prev = block->prev_phys;
+        remove_free_block(block);
+        prev->size += sizeof(BlockHeader) + block->size;
+        prev->next_phys = block->next_phys;
+        if (block->next_phys) {
+            block->next_phys->prev_phys = prev;
+        } else {
+            last_phys_block = prev;
+        }
+    }
 }
 
 void *calloc(size_t nmemb, size_t size) {
     size_t total = nmemb * size;
-    void *p = malloc(total);
+    void *p;
+    if (nmemb != 0 && total / nmemb != size) return NULL; /* Overflow */
+    p = malloc(total);
     if (p) {
         char *b = (char *)p;
         size_t i;
@@ -191,17 +353,61 @@ void *calloc(size_t nmemb, size_t size) {
 }
 
 void *realloc(void *ptr, size_t size) {
+    size_t aligned_size;
+    BlockHeader *block;
     void *new_p;
+    size_t copy_size, i;
+    char *d, *s;
+
     if (!ptr) return malloc(size);
-    if (size == 0) { free(ptr); return NULL; }
-    new_p = malloc(size);
-    if (new_p && ptr) {
-        /* Simple copy of size bytes */
-        char *d = (char *)new_p;
-        char *s = (char *)ptr;
-        size_t i;
-        for (i = 0; i < size; i++) d[i] = s[i];
+    if (size == 0) {
+        free(ptr);
+        return NULL;
     }
+
+    aligned_size = (size + 15) & ~15;
+    block = ((BlockHeader *)ptr) - 1;
+    if (block->magic != BLOCK_MAGIC) {
+        /* Not managed by our header, allocate new */
+        new_p = malloc(size);
+        if (new_p) {
+            d = (char *)new_p;
+            s = (char *)ptr;
+            for (i = 0; i < size; i++) d[i] = s[i];
+        }
+        return new_p;
+    }
+
+    if (block->size >= aligned_size) {
+        split_block(block, aligned_size);
+        return ptr;
+    }
+
+    /* Try to expand in place if next physical block is free */
+    if (block->next_phys && block->next_phys->is_free &&
+        (block->size + sizeof(BlockHeader) + block->next_phys->size >= aligned_size)) {
+        BlockHeader *next = block->next_phys;
+        remove_free_block(next);
+        block->size += sizeof(BlockHeader) + next->size;
+        block->next_phys = next->next_phys;
+        if (next->next_phys) {
+            next->next_phys->prev_phys = block;
+        } else {
+            last_phys_block = block;
+        }
+        split_block(block, aligned_size);
+        return ptr;
+    }
+
+    new_p = malloc(size);
+    if (!new_p) return NULL;
+
+    copy_size = block->size < size ? block->size : size;
+    d = (char *)new_p;
+    s = (char *)ptr;
+    for (i = 0; i < copy_size; i++) d[i] = s[i];
+
+    free(ptr);
     return new_p;
 }
 
@@ -1060,6 +1266,64 @@ int __modsi3(int a, int b) {
     else ub = (unsigned int)b;
     r = __umodsi3(ua, ub);
     return sign < 0 ? (int)(-r) : (int)r;
+}
+
+long long __muldi3(long long a, long long b) {
+    unsigned long long ua = (unsigned long long)a;
+    unsigned long long ub = (unsigned long long)b;
+    unsigned long long res = 0;
+    while (ub > 0) {
+        if (ub & 1) res += ua;
+        ua <<= 1;
+        ub >>= 1;
+    }
+    return (long long)res;
+}
+
+unsigned long long __udivdi3(unsigned long long a, unsigned long long b) {
+    unsigned long long q = 0;
+    unsigned long long r = 0;
+    int i;
+    if (b == 0) return 0;
+    for (i = 63; i >= 0; i--) {
+        r = (r << 1) | ((a >> i) & 1);
+        if (r >= b) {
+            r -= b;
+            q |= (1ULL << i);
+        }
+    }
+    return q;
+}
+
+unsigned long long __umoddi3(unsigned long long a, unsigned long long b) {
+    unsigned long long r = 0;
+    int i;
+    if (b == 0) return 0;
+    for (i = 63; i >= 0; i--) {
+        r = (r << 1) | ((a >> i) & 1);
+        if (r >= b) {
+            r -= b;
+        }
+    }
+    return r;
+}
+
+long long __divdi3(long long a, long long b) {
+    int sign = 1;
+    unsigned long long ua, ub, res;
+    if (a < 0) { sign = -sign; ua = (unsigned long long)(-a); } else { ua = (unsigned long long)a; }
+    if (b < 0) { sign = -sign; ub = (unsigned long long)(-b); } else { ub = (unsigned long long)b; }
+    res = __udivdi3(ua, ub);
+    return sign < 0 ? -(long long)res : (long long)res;
+}
+
+long long __moddi3(long long a, long long b) {
+    unsigned long long ua, ub, res;
+    int sign = 1;
+    if (a < 0) { sign = -1; ua = (unsigned long long)(-a); } else { ua = (unsigned long long)a; }
+    if (b < 0) { ub = (unsigned long long)(-b); } else { ub = (unsigned long long)b; }
+    res = __umoddi3(ua, ub);
+    return sign < 0 ? -(long long)res : (long long)res;
 }
 
 /* ========================================================================= */

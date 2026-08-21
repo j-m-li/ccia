@@ -104,11 +104,74 @@ int test_system(void) {
     return 0;
 }
 
+int test_malloc_free_realloc(void) {
+    void *p1 = malloc(128);
+    void *p2 = malloc(256);
+    void *p3 = malloc(512);
+    void *p2_reuse;
+    void *bc;
+    char *rp;
+    int *carr;
+    int i;
+
+    if (!p1 || !p2 || !p3) return 1;
+    memset(p1, 0xAA, 128);
+    memset(p2, 0xBB, 256);
+    memset(p3, 0xCC, 512);
+
+    free(p2);
+    p2_reuse = malloc(100);
+    if (!p2_reuse) return 2;
+
+    free(p1);
+    free(p2_reuse);
+    free(p3);
+
+    /* Coalesce test */
+    p1 = malloc(100);
+    p2 = malloc(100);
+    p3 = malloc(100);
+    free(p2);
+    free(p3);
+    bc = malloc(220);
+    if (!bc) return 3;
+    free(p1);
+    free(bc);
+
+    /* Realloc test */
+    rp = (char *)malloc(50);
+    if (!rp) return 4;
+    for (i = 0; i < 50; i++) rp[i] = (char)('a' + (i % 26));
+    rp = (char *)realloc(rp, 200);
+    if (!rp) return 5;
+    for (i = 0; i < 50; i++) {
+        if (rp[i] != (char)('a' + (i % 26))) {
+            free(rp);
+            return 6;
+        }
+    }
+    free(rp);
+
+    /* Calloc test */
+    carr = (int *)calloc(50, sizeof(int));
+    if (!carr) return 7;
+    for (i = 0; i < 50; i++) {
+        if (carr[i] != 0) {
+            free(carr);
+            return 8;
+        }
+    }
+    free(carr);
+
+    return 0;
+}
+
 int main(void) {
     if (test_memory() != 0) return 1;
     if (test_strings() != 0) return 2;
     if (test_linked_list() != 0) return 3;
     if (test_system() != 0) return 4;
+    if (test_malloc_free_realloc() != 0) return 5;
 
     printf("PASS: test_libc\n");
     return 0;
