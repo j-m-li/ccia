@@ -338,8 +338,18 @@ testfixture$(EXE):	$(TOP)/src/tclsqlite.c libsqlite.a $(TESTSRC)
 fulltest:	testfixture$(EXE) sqlite$(EXE)
 	./testfixture$(EXE) $(TOP)/test/all.test
 
-test:	testfixture$(EXE) sqlite$(EXE)
-	./testfixture$(EXE) $(TOP)/test/quick.test
+test:	sqlite$(EXE) test_suite$(EXE)
+	@echo "=========================================="
+	@echo " Running SQLite RV32I C API Unit Tests    "
+	@echo "=========================================="
+	qemu-riscv32-static ./test_suite$(EXE)
+	@echo "=========================================="
+	@echo " Running SQLite RV32I SQL Test Suite      "
+	@echo "=========================================="
+	qemu-riscv32-static ./sqlite$(EXE) :memory: < test_suite.sql
+	@echo "=========================================="
+	@echo " All SQLite RV32I Tests Passed!           "
+	@echo "=========================================="
 
 index.html:	$(TOP)/www/index.tcl last_change
 	tclsh $(TOP)/www/index.tcl `cat $(TOP)/VERSION` >index.html

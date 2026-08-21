@@ -108,3 +108,8 @@ ENCODING  = UTF8
 # You should not have to change anything below this line
 ###############################################################################
 include $(TOP)/main.mk
+
+test_suite$(EXE): test_suite.c libsqlite.a
+	$(TCC) -o test_suite$(EXE) test_suite.c libsqlite.a
+
+

@@ -1287,20 +1287,113 @@ int access(const char *pathname, int mode) {
     return 0;
 }
 
+struct statx_ts_t {
+    long long tv_sec;
+    unsigned int tv_nsec;
+    int __reserved;
+};
+struct statx_t {
+    unsigned int stx_mask;
+    unsigned int stx_blksize;
+    unsigned long long stx_attributes;
+    unsigned int stx_nlink;
+    unsigned int stx_uid;
+    unsigned int stx_gid;
+    unsigned short stx_mode;
+    unsigned short __spare0[1];
+    unsigned long long stx_ino;
+    unsigned long long stx_size;
+    unsigned long long stx_blocks;
+    unsigned long long stx_attributes_mask;
+    struct statx_ts_t stx_atime;
+    struct statx_ts_t stx_btime;
+    struct statx_ts_t stx_ctime;
+    struct statx_ts_t stx_mtime;
+    unsigned int stx_rdev_major;
+    unsigned int stx_rdev_minor;
+    unsigned int stx_dev_major;
+    unsigned int stx_dev_minor;
+    unsigned long long stx_mnt_id;
+    unsigned long long __spare2[13];
+};
+
+struct stat_rv32 {
+    unsigned int st_dev;
+    unsigned int st_ino;
+    unsigned int st_mode;
+    unsigned int st_nlink;
+    unsigned int st_uid;
+    unsigned int st_gid;
+    unsigned int st_rdev;
+    unsigned int __pad1;
+    long         st_size;
+    long         st_blksize;
+    int          __pad2;
+    long         st_blocks;
+    long         st_atime;
+    unsigned int st_atime_nsec;
+    long         st_mtime;
+    unsigned int st_mtime_nsec;
+    long         st_ctime;
+    unsigned int st_ctime_nsec;
+    unsigned int __unused4;
+    unsigned int __unused5;
+};
+
+static void copy_statx_to_stat(const struct statx_t *sx, void *buf) {
+    struct stat_rv32 *st = (struct stat_rv32 *)buf;
+    if (!st) return;
+    memset(st, 0, sizeof(*st));
+    st->st_dev = ((unsigned int)sx->stx_dev_major << 8) | sx->stx_dev_minor;
+    st->st_ino = (unsigned int)sx->stx_ino;
+    st->st_mode = sx->stx_mode;
+    st->st_nlink = sx->stx_nlink;
+    st->st_uid = sx->stx_uid;
+    st->st_gid = sx->stx_gid;
+    st->st_rdev = ((unsigned int)sx->stx_rdev_major << 8) | sx->stx_rdev_minor;
+    st->st_size = (long)sx->stx_size;
+    st->st_blksize = (long)sx->stx_blksize;
+    st->st_blocks = (long)sx->stx_blocks;
+    st->st_atime = (long)sx->stx_atime.tv_sec;
+    st->st_atime_nsec = sx->stx_atime.tv_nsec;
+    st->st_mtime = (long)sx->stx_mtime.tv_sec;
+    st->st_mtime_nsec = sx->stx_mtime.tv_nsec;
+    st->st_ctime = (long)sx->stx_ctime.tv_sec;
+    st->st_ctime_nsec = sx->stx_ctime.tv_nsec;
+}
+
 int fstat(int fd, void *buf) {
-    long ret = sys_call2(SYS_fstat, fd, (long)buf);
+    struct statx_t sx;
+    long ret = sys_call5(291 /* SYS_statx */, fd, (long)"", 0x1000 /* AT_EMPTY_PATH */, 0x7ff, (long)&sx);
+    if (ret == 0) {
+        copy_statx_to_stat(&sx, buf);
+        return 0;
+    }
+    ret = sys_call2(SYS_fstat, fd, (long)buf);
     if (ret < 0) { errno = (int)(-ret); return -1; }
     return 0;
 }
 
 int stat(const char *pathname, void *buf) {
-    long ret = sys_call4(79 /* SYS_fstatat */, AT_FDCWD, (long)pathname, (long)buf, 0);
+    struct statx_t sx;
+    long ret = sys_call5(291 /* SYS_statx */, AT_FDCWD, (long)pathname, 0, 0x7ff, (long)&sx);
+    if (ret == 0) {
+        copy_statx_to_stat(&sx, buf);
+        return 0;
+    }
+    ret = sys_call4(79 /* SYS_fstatat */, AT_FDCWD, (long)pathname, (long)buf, 0);
     if (ret < 0) { errno = (int)(-ret); return -1; }
     return 0;
 }
 
 int lstat(const char *pathname, void *buf) {
-    long ret = sys_call4(79 /* SYS_fstatat */, AT_FDCWD, (long)pathname, (long)buf, 0x100 /* AT_SYMLINK_NOFOLLOW */);
+    struct statx_t sx;
+    long ret = sys_call5(291 /* SYS_statx */, AT_FDCWD, (long)pathname, 0x100 /* AT_SYMLINK_NOFOLLOW */, 0x7ff, (long)&sx);
+    if (ret == 0) {
+        copy_statx_to_stat(&sx, buf);
+        return 0;
+    }
+    ret = sys_call4(79 /* SYS_fstatat */, AT_FDCWD, (long)pathname, (long)buf, 0x100 /* AT_SYMLINK_NOFOLLOW */);
     if (ret < 0) { errno = (int)(-ret); return -1; }
     return 0;
 }
