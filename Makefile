@@ -3,11 +3,13 @@
 # See the UNLICENSE file or http://unlicense.org/ for details.
 #
 
-CC ?= gcc
+CC ?= clang
 CFLAGS ?= -std=c90 -pedantic -Wall -Wextra -O2 -Iinclude
 
 # Default system include paths passed via -I options
 SYS_INCLUDES_X86_64 = $(shell for d in \
+	/usr/lib64/clang/*/include \
+	/usr/lib/clang/*/include \
 	/usr/lib/gcc/x86_64-redhat-linux/*/include \
 	/usr/lib/gcc/x86_64-linux-gnu/*/include \
 	/usr/include/x86_64-linux-gnu \
@@ -15,6 +17,8 @@ SYS_INCLUDES_X86_64 = $(shell for d in \
 	/usr/include; do [ -d "$$d" ] && echo "-I$$d"; done)
 
 SYS_INCLUDES_I386 = $(shell for d in \
+	/usr/lib64/clang/*/include \
+	/usr/lib/clang/*/include \
 	/usr/lib/gcc/x86_64-redhat-linux/*/32/include \
 	/usr/lib/gcc/x86_64-redhat-linux/*/include \
 	/usr/lib/gcc/x86_64-linux-gnu/*/32/include \

@@ -10,7 +10,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$DIR/.." && pwd)"
 CCIA="${CCIA:-${CC90:-$ROOT_DIR/ccia}}"
 if [ -z "$CCIA_INCLUDES" ]; then
-    CCIA_INCLUDES="${CC90_INCLUDES:--I$ROOT_DIR/include $(for d in /usr/lib/gcc/x86_64-redhat-linux/*/include /usr/lib/gcc/x86_64-linux-gnu/*/include /usr/include/x86_64-linux-gnu /usr/local/include /usr/include; do [ -d "$d" ] && echo "-I$d"; done)}"
+    CCIA_INCLUDES="${CC90_INCLUDES:--I$ROOT_DIR/include $(for d in /usr/lib64/clang/*/include /usr/lib/clang/*/include /usr/lib/gcc/x86_64-redhat-linux/*/include /usr/lib/gcc/x86_64-linux-gnu/*/include /usr/include/x86_64-linux-gnu /usr/local/include /usr/include; do [ -d "$d" ] && echo "-I$d"; done)}"
 fi
 
 echo "=========================================="

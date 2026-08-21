@@ -198,7 +198,7 @@ make test-self
 ```
 
 ### How the Bootstrap Works:
-1. **Stage 1 (`ccia` / `ccia-i386` / `ccia-rv32i`)**: Built from `src/*.c` using the host C compiler (e.g., GCC or Clang).
+1. **Stage 1 (`ccia` / `ccia-i386` / `ccia-rv32i`)**: Built from `src/*.c` using the host C compiler (Clang).
 2. **Stage 2 (`ccia_stage2` / `ccia-i386_stage2` / `ccia-rv32i_stage2`)**: Built from `src/*.c` using the Stage 1 compiler.
 3. **Stage 3 (`ccia_stage3` / `ccia-i386_stage3` / `ccia-rv32i_stage3`)**: Built from `src/*.c` using the Stage 2 compiler.
 4. **Fixed-Point Proof**: Stage 2 and Stage 3 compilers compile every single source file (`src/*.c`) into assembly (`.s`). The resulting assembly files are verified with `diff -u` to be **100% byte-for-byte identical**.

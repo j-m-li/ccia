@@ -359,9 +359,9 @@ int main(int argc, char **argv) {
             return 1;
         }
 #elif defined(TARGET_I386)
-        sprintf(cmd, "gcc -m32 -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+        sprintf(cmd, "clang -m32 -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
         if (system(cmd) != 0) {
-            sprintf(cmd, "gcc -m32 -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+            sprintf(cmd, "clang -m32 -o %s %s %s -lm", exe_file, asm_file, sf_obj);
             if (system(cmd) != 0) {
                 fprintf(stderr, "ccia: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);
@@ -369,10 +369,10 @@ int main(int argc, char **argv) {
             }
         }
 #else
-        sprintf(cmd, "gcc -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+        sprintf(cmd, "clang -no-pie -o %s %s %s -lm", exe_file, asm_file, sf_obj);
         if (system(cmd) != 0) {
             /* Try without -no-pie */
-            sprintf(cmd, "gcc -o %s %s %s -lm", exe_file, asm_file, sf_obj);
+            sprintf(cmd, "clang -o %s %s %s -lm", exe_file, asm_file, sf_obj);
             if (system(cmd) != 0) {
                 fprintf(stderr, "ccia: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);
