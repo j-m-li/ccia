@@ -13,11 +13,13 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 - **Pure ANSI C90 Standard Compliance**: Written entirely in ISO C90. Builds cleanly under `-std=c90 -pedantic -Wall -Wextra -Werror` with zero warnings.
 - **Zero External Dependencies**: Relies exclusively on standard C90 library headers (`<stdio.h>`, `<stdlib.h>`, `<string.h>`, `<ctype.h>`, `<stdarg.h>`).
 - **3-Stage Self-Hosting Bootstrap**: Verified 3-stage bootstrap fixed-point on **x86_64** (`make self`), **32-bit i386** (`make self-i386`), and **32-bit RISC-V RV32I** (`make self-rv32i`). Stage 2 and Stage 3 produce **100% byte-for-byte identical assembly** across all supported architectures.
-- **Real-World Capability**: Capable of compiling complex real-world single-header C libraries, such as `stb_image.h` (decoding PNG) and `stb_image_write.h` (encoding JPEG).
+- **Real-World Capability & Full SQLite Support**:
+  - Compiles complex real-world single-header C libraries, such as `stb_image.h` (decoding PNG) and `stb_image_write.h` (encoding JPEG).
+  - Compiles and runs the entire **SQLite 2.8.17** relational database engine, the interactive `sqlite` shell, all C API unit tests, and complex SQL test suites (joins, aggregates, views, triggers, transactions, rollbacks, and file persistence) across all three target architectures.
 - **Multiple Target Architectures**:
   - **x86_64**: Linux System V AMD64 ABI
   - **i386**: Linux 32-bit x86 cdecl ABI
-  - **RV32I**: Linux 32-bit RISC-V ILP32 ABI (pure base integer instruction set assembled and linked via Clang/LLD, tested with `qemu-riscv32-static`)
+  - **RV32I**: Linux 32-bit RISC-V ILP32 ABI (pure base integer instruction set assembled and linked via Clang/LLD, tested under `qemu-riscv32-static`)
 - **Pure C90 Software Floating-Point Subsystem**: Includes complete IEEE 754 floating-point implementation (`softfloat.c`) for single, double, and long double operations as well as compile-time constant expression evaluation.
 
 ---
@@ -103,8 +105,8 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 - Evaluates constant floating-point expressions at compile-time for global/static initializers.
 
 ### 6. Target Code Generation
-- **x86_64 (`src/gen.c`)**: System V AMD64 ABI compliant. Passes arguments in registers (`%rdi`, `%rsi`, `%rdx`, `%rcx`, `%r8`, `%r9`), uses 16-byte stack frame alignment, supports variable argument functions (`__builtin_va_start`, `__builtin_va_arg`, `__builtin_va_copy`), and produces standard GNU assembler output.
-- **i386 (`src/gen_i386.c`)**: Standard Linux cdecl ABI compliant. Stack-based argument passing, caller cleanup, `%eax` return values, and 32-bit pointer/integer arithmetic.
+- **x86_64 (`src/gen.c`)**: System V AMD64 ABI compliant. Passes arguments in registers (`%rdi`, `%rsi`, `%rdx`, `%rcx`, `%r8`, `%r9`), supports multi-word struct parameter passing, 16-byte stack frame alignment, 192-byte spill buffer for variable argument functions (`__builtin_va_start`, `__builtin_va_arg`, `__builtin_va_copy`), and produces standard GNU assembler output.
+- **i386 (`src/gen_i386.c`)**: Standard Linux cdecl ABI compliant. Stack-based argument passing, multi-word aggregate/float parameter support, caller cleanup, `%eax` return values, and 32-bit pointer/integer arithmetic.
 - **RV32I (`src/gen_riscv32.c`)**: Standard Linux RISC-V 32-bit ILP32 ABI compliant. Pure base RV32I integer instruction set, argument passing in `a0..a7`, frame pointer `s0`, software integer division/multiplication and floating point emulation, self-contained Linux runtime (`src/runtime_rv32.c`), freestanding headers in `include/riscv32/`, assembled and linked via Clang (`clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -fuse-ld=lld`).
 
 ---
@@ -116,17 +118,25 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 ├── include/
 │   ├── c90.h               # Core compiler definitions (AST, Tokens, Types, Symbols, Driver API)
 │   ├── softfloat.h         # Software floating-point subsystem declarations
-│   └── riscv32/            # Freestanding C90 standard headers for 32-bit RISC-V target
+│   └── riscv32/            # Freestanding C90/POSIX standard headers for 32-bit RISC-V target
 │       ├── assert.h
 │       ├── ctype.h
+│       ├── errno.h
+│       ├── fcntl.h
 │       ├── limits.h
 │       ├── math.h
+│       ├── pwd.h
+│       ├── signal.h
 │       ├── stdarg.h
 │       ├── stddef.h
 │       ├── stdint.h
 │       ├── stdio.h
 │       ├── stdlib.h
-│       └── string.h
+│       ├── string.h
+│       ├── sys/stat.h
+│       ├── sys/types.h
+│       ├── time.h
+│       └── unistd.h
 ├── src/
 │   ├── main.c              # Compiler driver entry point and CLI option handling
 │   ├── util.c              # Safe allocators, dynamic Vector, Map, StrBuf, diagnostics
@@ -153,7 +163,12 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 │   ├── test_precedence.c   # Operator precedence and associativity validation
 │   ├── test_comprehensive.c# Complex algorithms: BST, Sieve of Eratosthenes, Matrix multiply
 │   ├── test_stb_image.c    # Real-world image processing (stb_image PNG and stb_image_write JPEG)
-│   └── run_tests.sh        # Automated test suite execution script
+│   ├── run_tests.sh        # Automated test suite execution script
+│   └── sqlite/             # SQLite 2.8.17 embedded database test suite
+│       ├── src/            # SQLite core engine sources
+│       ├── test_suite.c    # SQLite C API unit test suite (40 assertions)
+│       ├── test_suite.sql  # Complex SQL regression queries (joins, views, triggers)
+│       └── Makefile.linux-gcc # SQLite build and test makefile
 ├── Makefile                # Build system, bootstrap verification, and test targets
 └── UNLICENSE               # Public Domain dedication
 ```
@@ -207,17 +222,31 @@ make test-self
 
 ## Running Tests
 
-Run the full automated test suite across all target architectures:
+### Compiler Unit Tests
+Run the automated compiler test suite across all target architectures:
 
 ```bash
 make test
 ```
 
-Target-specific test execution:
+Target-specific compiler test execution:
 ```bash
 make test-x86_64   # Test 64-bit compiler (native)
 make test-i386     # Test 32-bit x86 compiler (native 32-bit)
 make test-rv32i    # Test 32-bit RISC-V RV32I compiler (under qemu-riscv32-static)
+```
+
+### SQLite 2.8.17 Test Suites
+Build and execute SQLite 2.8.17 (C API unit tests and SQL queries) across all architectures:
+
+```bash
+# Run SQLite test suite across all 3 architectures:
+make test-sqlite
+
+# Or run architecture-specific SQLite test suites:
+make test-sqlite-x86_64  # Build & run SQLite with ccia
+make test-sqlite-i386    # Build & run SQLite with ccia-i386
+make test-sqlite-rv32i   # Build & run SQLite with ccia-rv32i (under qemu-riscv32-static)
 ```
 
 ---
