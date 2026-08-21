@@ -90,10 +90,25 @@ int test_linked_list(void) {
     return 0;
 }
 
+int test_system(void) {
+    int r;
+    r = system(NULL);
+    if (r == 0) return 1;
+
+    r = system("true");
+    if (r != 0) return 2;
+
+    r = system("exit 0");
+    if (r != 0) return 3;
+
+    return 0;
+}
+
 int main(void) {
     if (test_memory() != 0) return 1;
     if (test_strings() != 0) return 2;
     if (test_linked_list() != 0) return 3;
+    if (test_system() != 0) return 4;
 
     printf("PASS: test_libc\n");
     return 0;

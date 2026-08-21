@@ -712,9 +712,6 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         int i;
         int total_words = 0;
         int stack_words_count = 0;
-        int stack_bytes = 0;
-        int aligned_stack_bytes = 0;
-        int pad_bytes = 0;
         int is_direct = (node->u.call.func->kind == AST_VAR && node->u.call.func->u.sym->kind == SYM_FUNC);
         int *arg_words = (int *)malloc((num_args > 0 ? num_args : 1) * sizeof(int));
 
@@ -732,9 +729,6 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
 
         if (total_words > 8) {
             stack_words_count = total_words - 8;
-            stack_bytes = stack_words_count * 4;
-            aligned_stack_bytes = (stack_bytes + 15) & ~15;
-            pad_bytes = aligned_stack_bytes - stack_bytes;
         }
 
         if (is_direct) {

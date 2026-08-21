@@ -43,8 +43,11 @@ int errno = 0;
 #define SYS_exit_group  94
 #define SYS_kill        129
 #define SYS_brk         214
-#define SYS_mmap        222
 #define SYS_munmap      215
+#define SYS_clone       220
+#define SYS_execve      221
+#define SYS_mmap        222
+#define SYS_wait4       260
 
 #define AT_FDCWD        -100
 #define O_RDONLY        0
@@ -1086,9 +1089,40 @@ char *getenv(const char *name) {
     return NULL;
 }
 
+#define SYS_waitid      95
+
+int waitpid(int pid, int *status, int options);
+
 int system(const char *command) {
-    (void)command;
-    return -1;
+    long pid;
+    int status = 0;
+
+    if (!command) {
+        return 1;
+    }
+
+    pid = sys_call5(SYS_clone, 17 /* SIGCHLD */, 0, 0, 0, 0);
+    if (pid < 0) {
+        errno = (int)(-pid);
+        return -1;
+    }
+
+    if (pid == 0) {
+        char *argv[4];
+        argv[0] = "sh";
+        argv[1] = "-c";
+        argv[2] = (char *)command;
+        argv[3] = NULL;
+        sys_call3(SYS_execve, (long)"/bin/sh", (long)argv, (long)environ);
+        sys_call3(SYS_execve, (long)"/usr/bin/sh", (long)argv, (long)environ);
+        sys_call1(SYS_exit, 127);
+    }
+
+    if (waitpid((int)pid, &status, 0) < 0) {
+        return -1;
+    }
+
+    return status;
 }
 
 /* Character classification & conversion */
@@ -1416,6 +1450,82 @@ int getgid(void) {
 
 int getegid(void) {
     return (int)sys_call0(177 /* SYS_getegid */);
+}
+
+int fork(void) {
+    long pid = sys_call5(SYS_clone, 17 /* SIGCHLD */, 0, 0, 0, 0);
+    if (pid < 0) {
+        errno = (int)(-pid);
+        return -1;
+    }
+    return (int)pid;
+}
+
+int execve(const char *pathname, char *const argv[], char *const envp[]) {
+    long ret = sys_call3(SYS_execve, (long)pathname, (long)argv, (long)(envp ? envp : environ));
+    if (ret < 0) {
+        errno = (int)(-ret);
+        return -1;
+    }
+    return 0;
+}
+
+int execv(const char *path, char *const argv[]) {
+    return execve(path, argv, environ);
+}
+
+void _exit(int status) {
+    sys_call1(SYS_exit_group, status);
+    sys_call1(SYS_exit, status);
+    for (;;) {}
+}
+
+int waitpid(int pid, int *status, int options) {
+    int siginfo[32];
+    int i;
+    long ret;
+    int idtype = (pid == -1) ? 0 /* P_ALL */ : (pid < -1 ? 2 /* P_PGID */ : 1 /* P_PID */);
+    long id = (pid == -1) ? 0 : (pid < -1 ? -pid : pid);
+    int waitid_options = 4 /* WEXITED */;
+    if (options & 1 /* WNOHANG */) waitid_options |= 1 /* WNOHANG */;
+    if (options & 2 /* WUNTRACED */) waitid_options |= 2 /* WSTOPPED */;
+
+    for (i = 0; i < 32; i++) siginfo[i] = 0;
+
+    do {
+        ret = sys_call5(SYS_waitid, idtype, id, (long)siginfo, waitid_options, 0);
+    } while (ret == -4 /* -EINTR */);
+
+    if (ret < 0) {
+        errno = (int)(-ret);
+        return -1;
+    }
+
+    if (siginfo[3] == 0) {
+        return 0;
+    }
+
+    if (status) {
+        int code = siginfo[2];
+        int child_stat = siginfo[5];
+        if (code == 1 /* CLD_EXITED */) {
+            *status = (child_stat & 0xff) << 8;
+        } else if (code == 2 /* CLD_KILLED */ || code == 3 /* CLD_DUMPED */) {
+            *status = (child_stat & 0x7f) | (code == 3 ? 0x80 : 0);
+        } else if (code == 5 /* CLD_STOPPED */) {
+            *status = ((child_stat & 0xff) << 8) | 0x7f;
+        } else if (code == 6 /* CLD_CONTINUED */) {
+            *status = 0xffff;
+        } else {
+            *status = (child_stat & 0xff) << 8;
+        }
+    }
+
+    return siginfo[3];
+}
+
+int wait(int *status) {
+    return waitpid(-1, status, 0);
 }
 
 int fsync(int fd) {

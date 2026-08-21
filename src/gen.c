@@ -557,11 +557,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             Member *m = (lhs->kind == AST_MEMBER) ? lhs->u.member.member : NULL;
             gen_lval(gen, lhs);
             emit(gen, "    pushq %%rax");
+            emit(gen, "    pushq $0"); /* maintain 16-byte stack alignment */
             gen_expr(gen, node->u.binop.rhs);
             if (lhs->type && node->u.binop.rhs->type &&
                 !type_equal(lhs->type, node->u.binop.rhs->type)) {
                 gen_cast_to(gen, node->u.binop.rhs->type, lhs->type);
             }
+            emit(gen, "    addq $8, %%rsp");
             if (m && m->bit_width > 0) {
                 gen_bitfield_store(gen, m);
             } else {
@@ -939,11 +941,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 gen_cast_to(gen, lhs->type, common_type);
             }
             emit(gen, "    pushq %%rax");
+            emit(gen, "    pushq $0"); /* maintain 16-byte stack alignment */
             gen_expr(gen, rhs);
             if (!type_equal(rhs->type, common_type)) {
                 gen_cast_to(gen, rhs->type, common_type);
             }
             emit(gen, "    movq %%rax, %%rsi");
+            emit(gen, "    addq $8, %%rsp");
             emit(gen, "    popq %%rdi");
 
             if (common_type->kind == TYPE_FLOAT) {
@@ -1015,11 +1019,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             gen_cast_to(gen, lhs->type, common_type);
         }
         emit(gen, "    pushq %%rax");
+        emit(gen, "    pushq $0"); /* maintain 16-byte stack alignment */
         gen_expr(gen, rhs);
         if (!is_ptr_lhs && !is_ptr_rhs && common_type && type_is_integer(common_type) && rhs->type && !type_equal(rhs->type, common_type)) {
             gen_cast_to(gen, rhs->type, common_type);
         }
         emit(gen, "    movq %%rax, %%rcx");
+        emit(gen, "    addq $8, %%rsp");
         emit(gen, "    popq %%rax");
 
         switch (node->kind) {
