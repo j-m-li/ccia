@@ -13,6 +13,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install Clang
+      run: |
+        apt update
+        apt upgrade
+        apt install clang \
+          libc6-devel
     - name: make
       run: make
     - name: make test
