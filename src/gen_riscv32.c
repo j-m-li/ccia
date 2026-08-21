@@ -33,24 +33,12 @@ static void emit(CodeGen *gen, const char *fmt, ...) {
     int arg_idx = 0;
     int is_long = 0;
     int i;
-#if defined(__CCIA__) || defined(__CC90__)
-#if defined(TARGET_I386) || defined(TARGET_RISCV32)
-    for (i = 0; i < 6; i++) {
-        args[i] = *((const char **)&fmt + 1 + i);
-    }
-#else
-    for (i = 0; i < 6; i++) {
-        args[i] = *((const char **)&fmt - 1 - i);
-    }
-#endif
-#else
     va_list ap;
     va_start(ap, fmt);
     for (i = 0; i < 6; i++) {
         args[i] = va_arg(ap, char *);
     }
     va_end(ap);
-#endif
 
     while (*p) {
         if (*p == '%' && *(p + 1) == '%') {

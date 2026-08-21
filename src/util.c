@@ -56,157 +56,29 @@ char *c90_strndup(const char *s, int n) {
 }
 
 void c90_error(const char *filename, int line, const char *fmt, ...) {
-    const char *a1;
-    const char *a2;
-    const char *p = fmt;
-    int arg_idx = 0;
-    int is_long = 0;
-#if defined(__CCIA__) || defined(__CC90__)
-#ifdef TARGET_I386
-    a1 = *((const char **)&fmt + 1);
-    a2 = *((const char **)&fmt + 2);
-#else
-    a1 = *((const char **)&fmt - 1);
-    a2 = *((const char **)&fmt - 2);
-#endif
-#else
     va_list ap;
-    va_start(ap, fmt);
-    a1 = va_arg(ap, char *);
-    a2 = va_arg(ap, char *);
-    va_end(ap);
-#endif
-
     if (filename) {
         fprintf(stderr, "%s:%d: error: ", filename, line);
     } else {
         fprintf(stderr, "ccia: error: ");
     }
-    while (*p) {
-        if (*p == '%' && *(p + 1) == '%') {
-            fputc('%', stderr);
-            p += 2;
-        } else if (*p == '%') {
-            p++;
-            is_long = 0;
-            if (*p == 'l') { is_long = 1; p++; }
-            if (*p == 's') {
-                const char *s = (arg_idx == 0) ? a1 : a2;
-                if (s) fputs(s, stderr);
-                arg_idx++;
-                p++;
-            } else if (*p == 'd' || *p == 'i') {
-                if (is_long) {
-                    long val = (arg_idx == 0) ? (long)a1 : (long)a2;
-                    fprintf(stderr, "%ld", val);
-                } else {
-                    int val = (arg_idx == 0) ? (int)(long)a1 : (int)(long)a2;
-                    fprintf(stderr, "%d", val);
-                }
-                arg_idx++;
-                p++;
-            } else if (*p == 'u') {
-                if (is_long) {
-                    unsigned long val = (arg_idx == 0) ? (unsigned long)a1 : (unsigned long)a2;
-                    fprintf(stderr, "%lu", val);
-                } else {
-                    unsigned int val = (arg_idx == 0) ? (unsigned int)(long)a1 : (unsigned int)(long)a2;
-                    fprintf(stderr, "%u", val);
-                }
-                arg_idx++;
-                p++;
-            } else if (*p == 'c') {
-                int val = (arg_idx == 0) ? (int)(long)a1 : (int)(long)a2;
-                fputc(val, stderr);
-                arg_idx++;
-                p++;
-            } else {
-                fputc(*p, stderr);
-                p++;
-            }
-        } else {
-            fputc(*p, stderr);
-            p++;
-        }
-    }
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
     fputc('\n', stderr);
     exit(1);
 }
 
 void c90_warn(const char *filename, int line, const char *fmt, ...) {
-    const char *a1;
-    const char *a2;
-    const char *p = fmt;
-    int arg_idx = 0;
-    int is_long = 0;
-#if defined(__CCIA__) || defined(__CC90__)
-#ifdef TARGET_I386
-    a1 = *((const char **)&fmt + 1);
-    a2 = *((const char **)&fmt + 2);
-#else
-    a1 = *((const char **)&fmt - 1);
-    a2 = *((const char **)&fmt - 2);
-#endif
-#else
     va_list ap;
-    va_start(ap, fmt);
-    a1 = va_arg(ap, char *);
-    a2 = va_arg(ap, char *);
-    va_end(ap);
-#endif
-
     if (filename) {
         fprintf(stderr, "%s:%d: warning: ", filename, line);
     } else {
         fprintf(stderr, "ccia: warning: ");
     }
-    while (*p) {
-        if (*p == '%' && *(p + 1) == '%') {
-            fputc('%', stderr);
-            p += 2;
-        } else if (*p == '%') {
-            p++;
-            is_long = 0;
-            if (*p == 'l') { is_long = 1; p++; }
-            if (*p == 's') {
-                const char *s = (arg_idx == 0) ? a1 : a2;
-                if (s) fputs(s, stderr);
-                arg_idx++;
-                p++;
-            } else if (*p == 'd' || *p == 'i') {
-                if (is_long) {
-                    long val = (arg_idx == 0) ? (long)a1 : (long)a2;
-                    fprintf(stderr, "%ld", val);
-                } else {
-                    int val = (arg_idx == 0) ? (int)(long)a1 : (int)(long)a2;
-                    fprintf(stderr, "%d", val);
-                }
-                arg_idx++;
-                p++;
-            } else if (*p == 'u') {
-                if (is_long) {
-                    unsigned long val = (arg_idx == 0) ? (unsigned long)a1 : (unsigned long)a2;
-                    fprintf(stderr, "%lu", val);
-                } else {
-                    unsigned int val = (arg_idx == 0) ? (unsigned int)(long)a1 : (unsigned int)(long)a2;
-                    fprintf(stderr, "%u", val);
-                }
-                arg_idx++;
-                p++;
-            } else if (*p == 'c') {
-                int val = (arg_idx == 0) ? (int)(long)a1 : (int)(long)a2;
-                fputc(val, stderr);
-                arg_idx++;
-                p++;
-            } else {
-                fputc(*p, stderr);
-                p++;
-            }
-        } else {
-            fputc(*p, stderr);
-            p++;
-        }
-    }
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
     fputc('\n', stderr);
 }
 

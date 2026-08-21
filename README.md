@@ -12,7 +12,7 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 
 - **Pure ANSI C90 Standard Compliance**: Written entirely in ISO C90. Builds cleanly under `-std=c90 -pedantic -Wall -Wextra -Werror` with zero warnings.
 - **Zero External Dependencies**: Relies exclusively on standard C90 library headers (`<stdio.h>`, `<stdlib.h>`, `<string.h>`, `<ctype.h>`, `<stdarg.h>`).
-- **3-Stage Self-Hosting Bootstrap**: Verified 3-stage bootstrap fixed-point on both x86_64 (`make self`) and 32-bit i386 (`make self-i386`). Stage 2 and Stage 3 produce **100% byte-for-byte identical assembly**.
+- **3-Stage Self-Hosting Bootstrap**: Verified 3-stage bootstrap fixed-point on **x86_64** (`make self`), **32-bit i386** (`make self-i386`), and **32-bit RISC-V RV32I** (`make self-rv32i`). Stage 2 and Stage 3 produce **100% byte-for-byte identical assembly** across all supported architectures.
 - **Real-World Capability**: Capable of compiling complex real-world single-header C libraries, such as `stb_image.h` (decoding PNG) and `stb_image_write.h` (encoding JPEG).
 - **Multiple Target Architectures**:
   - **x86_64**: Linux System V AMD64 ABI
@@ -181,7 +181,7 @@ CFLAGS="-std=c90 -pedantic -Wall -Wextra -Werror -O2 -Iinclude" make
 
 ## Self-Hosting & 3-Stage Bootstrap Verification
 
-**CCIA** is fully self-hosting and can compile its own entire codebase from scratch.
+**CCIA** is fully self-hosting and can compile its own entire codebase from scratch on all supported architectures.
 
 ```bash
 # Verify 3-stage self-compilation for x86_64:
@@ -190,14 +190,17 @@ make self
 # Verify 3-stage self-compilation for 32-bit i386:
 make self-i386
 
-# Run full test suite across all 3 stages on both architectures:
+# Verify 3-stage self-compilation for 32-bit RISC-V RV32I:
+make self-rv32i
+
+# Run full test suite across all 3 stages on all architectures:
 make test-self
 ```
 
 ### How the Bootstrap Works:
-1. **Stage 1 (`ccia` / `ccia-i386`)**: Built from `src/*.c` using the host C compiler (e.g., GCC or Clang).
-2. **Stage 2 (`ccia_stage2` / `ccia-i386_stage2`)**: Built from `src/*.c` using the Stage 1 compiler.
-3. **Stage 3 (`ccia_stage3` / `ccia-i386_stage3`)**: Built from `src/*.c` using the Stage 2 compiler.
+1. **Stage 1 (`ccia` / `ccia-i386` / `ccia-rv32i`)**: Built from `src/*.c` using the host C compiler (e.g., GCC or Clang).
+2. **Stage 2 (`ccia_stage2` / `ccia-i386_stage2` / `ccia-rv32i_stage2`)**: Built from `src/*.c` using the Stage 1 compiler.
+3. **Stage 3 (`ccia_stage3` / `ccia-i386_stage3` / `ccia-rv32i_stage3`)**: Built from `src/*.c` using the Stage 2 compiler.
 4. **Fixed-Point Proof**: Stage 2 and Stage 3 compilers compile every single source file (`src/*.c`) into assembly (`.s`). The resulting assembly files are verified with `diff -u` to be **100% byte-for-byte identical**.
 
 ---

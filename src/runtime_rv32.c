@@ -28,6 +28,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 #define SYS_dup3        24
 #define SYS_fcntl       25
 #define SYS_ioctl       29
+#define SYS_unlinkat    35
 #define SYS_openat      56
 #define SYS_close       57
 #define SYS_lseek       62
@@ -93,6 +94,17 @@ static long sys_call4(long num, long a0, long a1, long a2, long a3) {
     return r_a0;
 }
 
+static long sys_call5(long num, long a0, long a1, long a2, long a3, long a4) {
+    register long r_a7 __asm__("a7") = num;
+    register long r_a0 __asm__("a0") = a0;
+    register long r_a1 __asm__("a1") = a1;
+    register long r_a2 __asm__("a2") = a2;
+    register long r_a3 __asm__("a3") = a3;
+    register long r_a4 __asm__("a4") = a4;
+    __asm__ volatile ("ecall" : "+r"(r_a0) : "r"(r_a7), "r"(r_a1), "r"(r_a2), "r"(r_a3), "r"(r_a4) : "memory");
+    return r_a0;
+}
+
 /* ========================================================================= */
 /* Process Exit & Entry Point                                                */
 /* ========================================================================= */
@@ -109,9 +121,14 @@ void abort(void) {
 
 extern int main(int argc, char **argv);
 
-void _start(void) {
-    int ret = main(0, NULL);
-    exit(ret);
+__attribute__((naked)) void _start(void) {
+    __asm__ volatile (
+        "lw a0, 0(sp)\n"
+        "addi a1, sp, 4\n"
+        "addi sp, sp, -16\n"
+        "call main\n"
+        "call exit\n"
+    );
 }
 
 /* ========================================================================= */
@@ -510,6 +527,11 @@ int fclose(FILE *stream) {
     return 0;
 }
 
+int remove(const char *pathname) {
+    long ret = sys_call3(SYS_unlinkat, AT_FDCWD, (long)pathname, 0);
+    return (ret < 0) ? -1 : 0;
+}
+
 int ungetc(int c, FILE *stream) {
     if (!stream || c == -1) return -1;
     stream->ungetc_char = (unsigned char)c;
@@ -579,9 +601,10 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
 }
 
 int fseek(FILE *stream, long offset, int whence) {
+    unsigned long long res = 0;
     long ret;
     if (!stream) return -1;
-    ret = sys_call3(SYS_lseek, stream->fd, offset, whence);
+    ret = sys_call5(SYS_lseek, stream->fd, (offset < 0 ? -1L : 0L), offset, (long)&res, whence);
     if (ret < 0) {
         stream->error = 1;
         return -1;
@@ -591,8 +614,15 @@ int fseek(FILE *stream, long offset, int whence) {
 }
 
 long ftell(FILE *stream) {
+    unsigned long long res = 0;
+    long ret;
     if (!stream) return -1;
-    return sys_call3(SYS_lseek, stream->fd, 0, SEEK_CUR);
+    ret = sys_call5(SYS_lseek, stream->fd, 0, 0, (long)&res, SEEK_CUR);
+    if (ret < 0) {
+        stream->error = 1;
+        return -1;
+    }
+    return (long)res;
 }
 
 int feof(FILE *stream) {

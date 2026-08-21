@@ -42,10 +42,24 @@ for t in "${TESTS[@]}"; do
     printf "Testing %-20s ... " "$t"
     
     # Compile with ccia
-    if ! $CCIA $CCIA_INCLUDES -o "$BIN" "$SRC" 2> "$DIR/$t.err"; then
-        echo "FAILED (Compilation error)"
-        cat "$DIR/$t.err"
-        exit 1
+    if [ -n "$CCIA_COMPILER_RUNNER" ]; then
+        if ! $CCIA_COMPILER_RUNNER $CCIA $CCIA_INCLUDES -S -o "$DIR/$t.tmp.s" "$SRC" 2> "$DIR/$t.err"; then
+            echo "FAILED (Compilation error)"
+            cat "$DIR/$t.err"
+            exit 1
+        fi
+        clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -fuse-ld=lld -nostdlib -static -o "$BIN" "$DIR/$t.tmp.s" "$ROOT_DIR/src/runtime_rv32.rv32i.o" "$ROOT_DIR/src/softfloat.rv32i.o" 2>> "$DIR/$t.err" || {
+            echo "FAILED (Linking error)"
+            cat "$DIR/$t.err"
+            exit 1
+        }
+        rm -f "$DIR/$t.tmp.s"
+    else
+        if ! $CCIA $CCIA_INCLUDES -o "$BIN" "$SRC" 2> "$DIR/$t.err"; then
+            echo "FAILED (Compilation error)"
+            cat "$DIR/$t.err"
+            exit 1
+        fi
     fi
     
     # Execute compiled binary
