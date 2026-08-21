@@ -32,10 +32,10 @@ static void print_usage(const char *progname) {
 
 static void print_version(void) {
 #ifdef TARGET_I386
-    printf("cc90-i386 version 1.0.0 (i386-linux)\n");
+    printf("ccia-i386 version 1.0.0 (i386-linux)\n");
     printf("A Public Domain C90 / ANSI C89 Compiler targeting 32-bit x86 (i386).\n");
 #else
-    printf("cc90 version 1.0.0 (x86_64-linux)\n");
+    printf("ccia version 1.0.0 (x86_64-linux)\n");
     printf("A Public Domain C90 / ANSI C89 Compiler written in C90.\n");
 #endif
     printf("This software is dedicated to the public domain (Unlicense).\n");
@@ -48,7 +48,7 @@ static char *read_file(const char *path) {
     size_t read_bytes;
 
     if (!fp) {
-        fprintf(stderr, "cc90: fatal error: cannot open input file '%s'\n", path);
+        fprintf(stderr, "ccia: fatal error: cannot open input file '%s'\n", path);
         exit(1);
     }
 
@@ -157,13 +157,13 @@ int main(int argc, char **argv) {
             g_config.preprocess_only = 1;
         } else if (strcmp(argv[i], "-o") == 0) {
             if (i + 1 >= argc) {
-                fprintf(stderr, "cc90: error: missing argument to '-o'\n");
+                fprintf(stderr, "ccia: error: missing argument to '-o'\n");
                 return 1;
             }
             g_config.output_file = argv[++i];
         } else if (strcmp(argv[i], "-I") == 0) {
             if (i + 1 >= argc) {
-                fprintf(stderr, "cc90: error: missing argument to '-I'\n");
+                fprintf(stderr, "ccia: error: missing argument to '-I'\n");
                 return 1;
             }
             vec_push(g_config.include_paths, argv[++i]);
@@ -171,17 +171,17 @@ int main(int argc, char **argv) {
             vec_push(g_config.include_paths, argv[i] + 2);
         } else if (strcmp(argv[i], "-D") == 0) {
             if (i + 1 >= argc) {
-                fprintf(stderr, "cc90: error: missing argument to '-D'\n");
+                fprintf(stderr, "ccia: error: missing argument to '-D'\n");
                 return 1;
             }
             vec_push(g_config.defines, argv[++i]);
         } else if (strncmp(argv[i], "-D", 2) == 0) {
             vec_push(g_config.defines, argv[i] + 2);
         } else if (argv[i][0] == '-') {
-            fprintf(stderr, "cc90: warning: unrecognized command-line option '%s'\n", argv[i]);
+            fprintf(stderr, "ccia: warning: unrecognized command-line option '%s'\n", argv[i]);
         } else {
             if (g_config.input_file) {
-                fprintf(stderr, "cc90: error: multiple input files are not supported\n");
+                fprintf(stderr, "ccia: error: multiple input files are not supported\n");
                 return 1;
             }
             g_config.input_file = argv[i];
@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
     }
 
     if (!g_config.input_file) {
-        fprintf(stderr, "cc90: fatal error: no input files\n");
+        fprintf(stderr, "ccia: fatal error: no input files\n");
         return 1;
     }
 
@@ -223,7 +223,7 @@ int main(int argc, char **argv) {
         if (g_config.output_file) {
             out = fopen(g_config.output_file, "w");
             if (!out) {
-                fprintf(stderr, "cc90: cannot open output file '%s'\n", g_config.output_file);
+                fprintf(stderr, "ccia: cannot open output file '%s'\n", g_config.output_file);
                 return 1;
             }
         }
@@ -259,7 +259,7 @@ int main(int argc, char **argv) {
 
     asm_out = fopen(asm_file, "w");
     if (!asm_out) {
-        fprintf(stderr, "cc90: cannot open output assembly file '%s'\n", asm_file);
+        fprintf(stderr, "ccia: cannot open output assembly file '%s'\n", asm_file);
         return 1;
     }
 
@@ -289,7 +289,7 @@ int main(int argc, char **argv) {
         sprintf(cmd, "as -o %s %s", obj_file, asm_file);
 #endif
         if (system(cmd) != 0) {
-            fprintf(stderr, "cc90: assembler failed\n");
+            fprintf(stderr, "ccia: assembler failed\n");
             if (need_cleanup_asm) remove(asm_file);
             return 1;
         }
@@ -307,7 +307,7 @@ int main(int argc, char **argv) {
         if (system(cmd) != 0) {
             sprintf(cmd, "gcc -m32 -o %s %s %s -lm", exe_file, asm_file, sf_obj);
             if (system(cmd) != 0) {
-                fprintf(stderr, "cc90: linking failed\n");
+                fprintf(stderr, "ccia: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);
                 return 1;
             }
@@ -318,7 +318,7 @@ int main(int argc, char **argv) {
             /* Try without -no-pie */
             sprintf(cmd, "gcc -o %s %s %s -lm", exe_file, asm_file, sf_obj);
             if (system(cmd) != 0) {
-                fprintf(stderr, "cc90: linking failed\n");
+                fprintf(stderr, "ccia: linking failed\n");
                 if (need_cleanup_asm) remove(asm_file);
                 return 1;
             }

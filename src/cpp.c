@@ -62,6 +62,9 @@ Preprocessor *cpp_new(void) {
     cpp_define_macro(cpp, "__GNUC__", "4");
     cpp_define_macro(cpp, "__GNUC_MINOR__", "9");
     cpp_define_macro(cpp, "__GNUC_PATCHLEVEL__", "0");
+    cpp_define_macro(cpp, "__CCIA__", "1");
+    cpp_define_macro(cpp, "__CCIA_I386__", "1");
+    cpp_define_macro(cpp, "__CCIA_VERSION__", "\"1.0.0\"");
     cpp_define_macro(cpp, "__CC90__", "1");
     cpp_define_macro(cpp, "__CC90_I386__", "1");
     cpp_define_macro(cpp, "__CC90_VERSION__", "\"1.0.0\"");
@@ -125,6 +128,8 @@ Preprocessor *cpp_new(void) {
     cpp_define_macro(cpp, "__GNUC__", "4");
     cpp_define_macro(cpp, "__GNUC_MINOR__", "9");
     cpp_define_macro(cpp, "__GNUC_PATCHLEVEL__", "0");
+    cpp_define_macro(cpp, "__CCIA__", "1");
+    cpp_define_macro(cpp, "__CCIA_VERSION__", "\"1.0.0\"");
     cpp_define_macro(cpp, "__CC90__", "1");
     cpp_define_macro(cpp, "__CC90_VERSION__", "\"1.0.0\"");
     cpp_define_macro(cpp, "__SIZE_TYPE__", "unsigned long");

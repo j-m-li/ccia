@@ -12,7 +12,7 @@
 void *c90_malloc(size_t size) {
     void *ptr = malloc(size);
     if (!ptr && size > 0) {
-        fprintf(stderr, "cc90: out of memory (failed to allocate %lu bytes)\n", (unsigned long)size);
+        fprintf(stderr, "ccia: out of memory (failed to allocate %lu bytes)\n", (unsigned long)size);
         exit(1);
     }
     return ptr;
@@ -21,7 +21,7 @@ void *c90_malloc(size_t size) {
 void *c90_calloc(size_t count, size_t size) {
     void *ptr = calloc(count, size);
     if (!ptr && count > 0 && size > 0) {
-        fprintf(stderr, "cc90: out of memory (failed to allocate %lu bytes)\n", (unsigned long)(count * size));
+        fprintf(stderr, "ccia: out of memory (failed to allocate %lu bytes)\n", (unsigned long)(count * size));
         exit(1);
     }
     return ptr;
@@ -30,7 +30,7 @@ void *c90_calloc(size_t count, size_t size) {
 void *c90_realloc(void *ptr, size_t size) {
     void *new_ptr = realloc(ptr, size);
     if (!new_ptr && size > 0) {
-        fprintf(stderr, "cc90: out of memory (failed to reallocate %lu bytes)\n", (unsigned long)size);
+        fprintf(stderr, "ccia: out of memory (failed to reallocate %lu bytes)\n", (unsigned long)size);
         exit(1);
     }
     return new_ptr;
@@ -61,7 +61,7 @@ void c90_error(const char *filename, int line, const char *fmt, ...) {
     const char *p = fmt;
     int arg_idx = 0;
     int is_long = 0;
-#ifdef __CC90__
+#if defined(__CCIA__) || defined(__CC90__)
 #ifdef TARGET_I386
     a1 = *((const char **)&fmt + 1);
     a2 = *((const char **)&fmt + 2);
@@ -80,7 +80,7 @@ void c90_error(const char *filename, int line, const char *fmt, ...) {
     if (filename) {
         fprintf(stderr, "%s:%d: error: ", filename, line);
     } else {
-        fprintf(stderr, "cc90: error: ");
+        fprintf(stderr, "ccia: error: ");
     }
     while (*p) {
         if (*p == '%' && *(p + 1) == '%') {
@@ -139,7 +139,7 @@ void c90_warn(const char *filename, int line, const char *fmt, ...) {
     const char *p = fmt;
     int arg_idx = 0;
     int is_long = 0;
-#ifdef __CC90__
+#if defined(__CCIA__) || defined(__CC90__)
 #ifdef TARGET_I386
     a1 = *((const char **)&fmt + 1);
     a2 = *((const char **)&fmt + 2);
@@ -158,7 +158,7 @@ void c90_warn(const char *filename, int line, const char *fmt, ...) {
     if (filename) {
         fprintf(stderr, "%s:%d: warning: ", filename, line);
     } else {
-        fprintf(stderr, "cc90: warning: ");
+        fprintf(stderr, "ccia: warning: ");
     }
     while (*p) {
         if (*p == '%' && *(p + 1) == '%') {

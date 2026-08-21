@@ -1,46 +1,106 @@
-# CC90 - ANSI C90 Compiler in C90
+# CCIA - ANSI C90 (ISO C89) Compiler in Pure C90
 
 agy --conversation=74f9a373-71da-462a-80d8-e56dc0a222e4
 
-**CC90** is a complete, self-contained ANSI C90 (ISO C90 / C89) compiler written strictly in ANSI C90, targeting both **x86_64** (System V AMD64 ABI) and **32-bit x86 / i386** (cdecl ABI) Linux.
+**CCIA** is a complete, self-contained, self-hosting ANSI C90 (ISO/IEC 9899:1990, commonly referred to as C89) compiler written strictly in portable ANSI C90. It targets both **x86_64** (System V AMD64 ABI) and **32-bit x86 / i386** (cdecl ABI) Linux.
 
-This project is released into the **Public Domain** under [The Unlicense](UNLICENSE).
+This project is dedicated to the **Public Domain** under [The Unlicense](UNLICENSE).
 
 ---
 
-## Features
+## Highlights
 
-- **Strict ANSI C90 Implementation**:
-  - Compiles cleanly with `-std=c90 -pedantic -Wall -Wextra -Werror` with zero warnings.
-  - Zero non-standard dependencies; uses only the standard C90 library (`<stdio.h>`, `<stdlib.h>`, `<string.h>`, `<ctype.h>`, `<stdarg.h>`).
-- **Complete C Preprocessor (CPP)**:
-  - Macro definitions (`#define`), object-like and function-like macros with argument substitution.
-  - Undefining macros (`#undef`).
-  - Conditional compilation directives (`#ifdef`, `#ifndef`, `#if`, `#elif`, `#else`, `#endif`) with full constant expression evaluation (logical, bitwise, comparison, arithmetic, conditional `? :`).
-  - File inclusion (`#include <header>` and `#include "file"`).
-  - Stringification (`#`) and token concatenation (`##`).
-  - Standard predefined macros (`__FILE__`, `__LINE__`, architecture macros).
-- **Lexical Analyzer (Lexer)**:
-  - All ANSI C90 keywords, multi-character operators, punctuation, comments (`/* ... */`), character escapes, octal/hex/decimal integer literals, floating-point literals, string literal concatenation, and line splicing (`\ \n`).
-- **Type System**:
-  - Scalar types (`void`, `char`, `short`, `int`, `long`, signed and unsigned variants, `float`, `double`).
-  - Derived types: pointers (`*`, `**`), arrays (1D and multidimensional), function pointers, function prototypes.
-  - Aggregate types: `struct` (field alignment and offset computation), `union` (memory sharing), `enum` (constant evaluation), and `typedef`.
-  - Type decay, integral promotions, and arithmetic type conversions.
-- **Parser**:
-  - Recursive descent parser with full standard expression precedence.
-  - Declarations, complex declarators, nested initializers (scalar, array, struct).
-  - Statements: `if`/`else`, `while`, `do..while`, `for`, `switch`/`case`/`default`, `goto`, labels, `break`, `continue`, `return`.
-- **x86_64 Code Generator (`gen.c`)**:
-  - Emits standard 64-bit GNU assembler syntax (`.s`).
-  - System V AMD64 ABI compliance: register arguments (`%rdi`, `%rsi`, `%rdx`, `%rcx`, `%r8`, `%r9`), stack arguments (arguments 7+), 16-byte aligned stack frames.
-- **x86 32-bit (i386) Code Generator (`gen_i386.c`)**:
-  - Emits standard 32-bit GNU assembler syntax (`.s`).
-  - Standard cdecl ABI compliance: stack-based argument passing (`8(%ebp)+`), caller cleanup, `%eax` return values, 32-bit pointer and `long` arithmetic.
-- **Compiler Drivers**:
-  - `cc90`: Native x86_64 compiler driver.
-  - `cc90-i386`: Native 32-bit x86 / i386 compiler driver (`as --32`, `gcc -m32`).
-  - Standard CLI supporting `-o`, `-S`, `-c`, `-E`, `-I`, `-D`, `-v`, `-h`.
+- **Pure ANSI C90 Standard Compliance**: Written entirely in ISO C90. Builds cleanly under `-std=c90 -pedantic -Wall -Wextra -Werror` with zero warnings.
+- **Zero External Dependencies**: Relies exclusively on standard C90 library headers (`<stdio.h>`, `<stdlib.h>`, `<string.h>`, `<ctype.h>`, `<stdarg.h>`).
+- **3-Stage Self-Hosting Bootstrap**: Verified 3-stage bootstrap fixed-point on both x86_64 (`make self`) and 32-bit i386 (`make self-i386`). Stage 2 and Stage 3 produce **100% byte-for-byte identical assembly**.
+- **Real-World Capability**: Capable of compiling complex real-world single-header C libraries, such as `stb_image.h` (decoding PNG) and `stb_image_write.h` (encoding JPEG).
+- **Dual Target Architectures**: Emits clean, readable GNU assembler syntax for native 64-bit (`x86_64`) and 32-bit (`i386`) Linux systems.
+- **Pure C90 Software Floating-Point Subsystem**: Includes complete IEEE 754 floating-point implementation (`softfloat.c`) for single, double, and long double operations as well as compile-time constant expression evaluation.
+
+---
+
+## Compiler Architecture & Pipeline
+
+```
+  Source Code (.c)
+         │
+         ▼
+┌─────────────────┐
+│ C Preprocessor  │  Macro expansion, #include, conditional compilation (#if, #ifdef),
+│     (cpp.c)     │  stringification (#), token concatenation (##)
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Lexer / Scanner │  ANSI C90 tokens, keyword recognition, numeric literals,
+│     (lex.c)     │  string concatenation, character escape sequences
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Parser & AST    │  Recursive descent parser, complete operator precedence climbing,
+│    (parse.c)    │  declarations, compound initializers, control-flow constructs
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│  Type Checker   │  Type synthesis, implicit promotions, arithmetic conversions,
+│ (type.c, sym.c) │  struct/union/enum layouts, bit-fields, symbol scoping
+└────────┬────────┘
+         ▼
+┌─────────────────────────────────────────────────────────┐
+│                     Code Generators                     │
+│  ┌───────────────────────────┬───────────────────────┐  │
+│  │   x86_64 Backend (gen.c)  │ i386 Backend (gen_... │  │
+│  │  System V AMD64 ABI       │  cdecl ABI            │  │
+│  │  Register calling conv.   │  Stack calling conv.  │  │
+│  │  16-byte aligned frames   │  32-bit pointer model │  │
+│  └───────────────────────────┴───────────────────────┘  │
+└────────────────────────────┬────────────────────────────┘
+                             ▼
+                    Assembly Code (.s)
+                             │
+                             ▼
+                 Assembler (as) & Linker (ld)
+                             │
+                             ▼
+                      Executable (ELF)
+```
+
+---
+
+## Key Components
+
+### 1. Preprocessor (`src/cpp.c`)
+- Complete macro expansion engine supporting both object-like (`#define FOO 1`) and function-like (`#define MAX(a, b) ((a) > (b) ? (a) : (b))`) macros.
+- Full support for stringification (`#`), token concatenation (`##`), and variable argument lists (`...` / `__VA_ARGS__`).
+- Conditional compilation (`#if`, `#ifdef`, `#ifndef`, `#elif`, `#else`, `#endif`) with full constant expression evaluation (logical, bitwise, comparison, arithmetic, and ternary conditional operators).
+- Standard include file resolution (`#include <header>` and `#include "file"`), line markers, and built-in predefined macros (`__FILE__`, `__LINE__`, `__DATE__`, `__TIME__`, `__STDC__`, `__CCIA__`, `__CCIA_VERSION__`).
+
+### 2. Lexer (`src/lex.c`)
+- Full tokenization conforming to ANSI C90 specifications.
+- Handles multi-character operators (`++`, `--`, `->`, `<<`, `>>`, `<=`, `>=`, `==`, `!=`, `&&`, `||`, compound assignments).
+- String literal concatenation and character escape sequences (`\n`, `\t`, `\r`, `\0`, `\xHH`, `\OOO`).
+- Decodes integer constants (decimal, octal, hexadecimal, suffixes `U`, `L`, `UL`) and floating-point literals (`float`, `double`, `long double`).
+
+### 3. Parser & AST (`src/parse.c`)
+- Pure recursive descent parser generating a strongly typed abstract syntax tree (AST).
+- Complete standard operator precedence climbing matching ANSI C90 specifications.
+- Handles complex declarations, pointer declarators, multidimensional arrays, and function pointers.
+- Full support for nested compound initializers for arrays, structs, and unions with automatic zero-padding.
+- Statements: `if`/`else`, `switch`/`case`/`default`, `while`, `do..while`, `for`, `goto`, labels, `break`, `continue`, `return`.
+
+### 4. Type System & Symbol Table (`src/type.c`, `src/sym.c`)
+- Complete representation of primitive and derived types (`void`, `char`, `short`, `int`, `long`, `float`, `double`, `long double`, signed/unsigned variants, pointers, arrays, functions, structs, unions, enums, typedefs).
+- Standard integer promotions and usual arithmetic conversions.
+- Struct/union memory layout computation, field alignment, padding, and bit-field packing.
+- Multi-level lexical scoping with distinct namespaces for symbols, struct/union/enum tags, and labels.
+
+### 5. Software Floating-Point Engine (`src/softfloat.c`)
+- Written strictly in ANSI C90 without requiring compiler runtime floating-point support.
+- Implements IEEE 754 single-precision (32-bit), double-precision (64-bit), and extended/quad-precision (80-bit / 128-bit) arithmetic: addition, subtraction, multiplication, division, comparisons, and conversions.
+- Evaluates constant floating-point expressions at compile-time for global/static initializers.
+
+### 6. Target Code Generation
+- **x86_64 (`src/gen.c`)**: System V AMD64 ABI compliant. Passes arguments in registers (`%rdi`, `%rsi`, `%rdx`, `%rcx`, `%r8`, `%r9`), uses 16-byte stack frame alignment, supports variable argument functions (`__builtin_va_start`, `__builtin_va_arg`, `__builtin_va_copy`), and produces standard GNU assembler output.
+- **i386 (`src/gen_i386.c`)**: Standard Linux cdecl ABI compliant. Stack-based argument passing, caller cleanup, `%eax` return values, and 32-bit pointer/integer arithmetic.
 
 ---
 
@@ -49,28 +109,34 @@ This project is released into the **Public Domain** under [The Unlicense](UNLICE
 ```
 .
 ├── include/
-│   └── c90.h               # Core header (AST, Tokens, Types, Symbols, Driver API)
+│   ├── c90.h               # Core compiler definitions (AST, Tokens, Types, Symbols, Driver API)
+│   └── softfloat.h         # Software floating-point subsystem declarations
 ├── src/
-│   ├── main.c              # CLI Driver and compiler entry point
-│   ├── util.c              # Safe allocators, Vector, Map, StrBuf, Error handler
+│   ├── main.c              # Compiler driver entry point and CLI option handling
+│   ├── util.c              # Safe allocators, dynamic Vector, Map, StrBuf, diagnostics
 │   ├── lex.c               # Lexer / Tokenizer
 │   ├── cpp.c               # C Preprocessor and macro evaluation engine
-│   ├── type.c              # Type system and struct/union layout
-│   ├── sym.c               # Lexical scope and symbol tables
+│   ├── type.c              # Type system, struct/union layout, type promotions
+│   ├── sym.c               # Lexical scope and symbol table management
 │   ├── parse.c             # Recursive descent parser and constant folding
-│   ├── gen.c               # x86_64 Code Generator
-│   └── gen_i386.c          # x86 32-bit (i386) Code Generator
+│   ├── gen.c               # x86_64 Code Generator (System V AMD64 ABI)
+│   ├── gen_i386.c          # 32-bit x86 Code Generator (cdecl ABI)
+│   └── softfloat.c         # Pure C90 IEEE 754 software floating-point implementation
 ├── tests/
-│   ├── test_expr.c         # Arithmetic, bitwise, comparison, logic test
-│   ├── test_control.c      # if/else, loops, switch/case, goto test
-│   ├── test_types.c        # Scalars, arrays, pointers, casts, sizeof test
-│   ├── test_structs.c      # Structs, unions, enums, typedefs test
-│   ├── test_functions.c    # ABI argument passing, recursion, function pointers test
-│   ├── test_preprocessor.c # Macros, stringify, concat, conditionals test
-│   ├── test_libc.c         # malloc/free, qsort, string functions, stdio test
-│   ├── test_comprehensive.c# Binary Search Tree, Sieve of Eratosthenes, Matrix mult test
-│   └── run_tests.sh        # Automated test suite runner
-├── Makefile                # Multi-target build and bootstrap configuration
+│   ├── test_expr.c         # Expressions, arithmetic, bitwise, and logical operators
+│   ├── test_control.c      # Control flow: if/else, while, do..while, for, switch, goto
+│   ├── test_types.c        # Primitive types, arrays, pointers, casts, sizeof
+│   ├── test_structs.c      # Structs, nested structs, unions, enums, typedefs
+│   ├── test_functions.c    # Function calls, recursion, argument passing, function pointers
+│   ├── test_preprocessor.c # Macros, stringify, token pasting, conditionals, includes
+│   ├── test_libc.c         # C standard library integration (malloc/free, qsort, string, stdio)
+│   ├── test_float.c        # Floating-point arithmetic, conversions, and math operations
+│   ├── test_bitfields.c    # Struct bit-fields layout, extraction, and insertion
+│   ├── test_precedence.c   # Operator precedence and associativity validation
+│   ├── test_comprehensive.c# Complex algorithms: BST, Sieve of Eratosthenes, Matrix multiply
+│   ├── test_stb_image.c    # Real-world image processing (stb_image PNG and stb_image_write JPEG)
+│   └── run_tests.sh        # Automated test suite execution script
+├── Makefile                # Build system, bootstrap verification, and test targets
 └── UNLICENSE               # Public Domain dedication
 ```
 
@@ -78,23 +144,26 @@ This project is released into the **Public Domain** under [The Unlicense](UNLICE
 
 ## Building
 
-Build both the x86_64 (`cc90`) and 32-bit x86 (`cc90-i386`) compilers:
+### Quick Build
+To compile both the 64-bit compiler (`ccia`) and 32-bit compiler (`ccia-i386`):
 
 ```bash
 make
 ```
 
-To build in strict ISO C90 mode with all warnings enabled as errors:
+### Strict ISO C90 Build
+To verify strict standard compliance with all warnings treated as errors:
 
 ```bash
-make clean && CFLAGS="-std=c90 -pedantic -Wall -Wextra -Werror -O2 -Iinclude" make
+make clean
+CFLAGS="-std=c90 -pedantic -Wall -Wextra -Werror -O2 -Iinclude" make
 ```
 
 ---
 
-## Self-Hosting / Bootstrap
+## Self-Hosting & 3-Stage Bootstrap Verification
 
-Both **cc90** and **cc90-i386** are fully self-hosting (can compile themselves). You can verify 3-stage self-compilation and fixed-point reproducibility:
+**CCIA** is fully self-hosting and can compile its own entire codebase from scratch.
 
 ```bash
 # Verify 3-stage self-compilation for x86_64:
@@ -103,62 +172,82 @@ make self
 # Verify 3-stage self-compilation for 32-bit i386:
 make self-i386
 
-# Run full test suite across all 3 compiler stages for both architectures:
+# Run full test suite across all 3 stages on both architectures:
 make test-self
 ```
 
-The bootstrap process ensures:
-1. **Stage 1 (`cc90` / `cc90-i386`)**: Compiled from `src/*.c` using the host C compiler.
-2. **Stage 2**: Compiled from `src/*.c` using Stage 1.
-3. **Stage 3**: Compiled from `src/*.c` using Stage 2.
-4. **Fixed-Point Verification**: Stage 2 and Stage 3 emit 100% byte-for-byte identical assembly across the entire compiler source codebase.
+### How the Bootstrap Works:
+1. **Stage 1 (`ccia` / `ccia-i386`)**: Built from `src/*.c` using the host C compiler (e.g., GCC or Clang).
+2. **Stage 2 (`ccia_stage2` / `ccia-i386_stage2`)**: Built from `src/*.c` using the Stage 1 compiler.
+3. **Stage 3 (`ccia_stage3` / `ccia-i386_stage3`)**: Built from `src/*.c` using the Stage 2 compiler.
+4. **Fixed-Point Proof**: Stage 2 and Stage 3 compilers compile every single source file (`src/*.c`) into assembly (`.s`). The resulting assembly files are verified with `diff -u` to be **100% byte-for-byte identical**.
 
 ---
 
 ## Running Tests
 
-Execute the automated test suite on both targets:
+Run the full automated test suite on both target architectures:
 
 ```bash
 make test
 ```
 
-Or test specific targets:
-
+Target-specific test execution:
 ```bash
-make test-x86_64
-make test-i386
+make test-x86_64   # Test 64-bit compiler
+make test-i386     # Test 32-bit compiler
 ```
 
 ---
 
-## Usage
+## Command-Line Usage
 
-### 64-bit (x86_64):
-```bash
-./cc90 -o myprog myprog.c
-./cc90 -S -o myprog.s myprog.c
+```
+Usage: ccia [options] <input-file.c>
+
+Options:
+  -o <file>       Place the output into <file>
+  -S              Compile only; generate assembly (.s)
+  -c              Compile and assemble, but do not link (.o)
+  -E              Preprocess only; print preprocessed source to stdout
+  -I <dir>        Add directory to include search path
+  -D <macro>[=v]  Define preprocessor macro with optional value
+  -v, --version   Display compiler version and public domain notice
+  -h, --help      Display available command-line options
 ```
 
-### 32-bit (i386):
+### Examples
+
+#### 1. Compile and link a program (x86_64):
 ```bash
-./cc90-i386 -o myprog32 myprog.c
-./cc90-i386 -S -o myprog32.s myprog.c
+./ccia -o hello hello.c
+./hello
 ```
 
-### Compile to an object file (`.o`):
+#### 2. Compile and link for 32-bit x86:
 ```bash
-./cc90 -c -o myprog.o myprog.c
+./ccia-i386 -o hello32 hello.c
+./hello32
 ```
 
-### Preprocess only (print to stdout):
+#### 3. Generate assembly output (`.s`):
 ```bash
-./cc90 -E myprog.c
+./ccia -S -o program.s program.c
 ```
 
-### Include directories and Macro definitions:
+#### 4. Compile to an object file (`.o`):
 ```bash
-./cc90 -Iinclude -DDEBUG=1 -o myprog myprog.c
+./ccia -c -o program.o program.c
+```
+
+#### 5. Preprocess only (print to stdout):
+```bash
+./ccia -E -Iinclude program.c
+```
+
+#### 6. Pass include paths and macro definitions:
+```bash
+./ccia -Iinclude -DNDEBUG -DVERSION=\"1.0.0\" -o myapp main.c
 ```
 
 ---
@@ -166,4 +255,7 @@ make test-i386
 ## License
 
 This is free and unencumbered software released into the **Public Domain**.
-See the [UNLICENSE](UNLICENSE) file or <https://unlicense.org/> for details.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or distribute this software, either in source code form or as a compiled binary, for any purpose, commercial or non-commercial, and by any means.
+
+For more information, please refer to the [UNLICENSE](UNLICENSE) file or <https://unlicense.org/>.

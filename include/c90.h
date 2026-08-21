@@ -6,7 +6,7 @@
 #ifndef C90_H
 #define C90_H
 
-#if defined(TARGET_I386) || defined(__CC90_I386__) || defined(__i386__) || defined(__i386)
+#if defined(TARGET_I386) || defined(__CCIA_I386__) || defined(__CC90_I386__) || defined(__i386__) || defined(__i386)
 #ifndef TARGET_I386
 #define TARGET_I386 1
 #endif

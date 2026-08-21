@@ -5,6 +5,8 @@
 a.out
 cc90
 cc90*
+ccia
+ccia*
 src/*.o
 src/*.s
 src/*.tmp.s

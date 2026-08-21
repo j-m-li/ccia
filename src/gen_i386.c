@@ -33,7 +33,7 @@ static void emit(CodeGen *gen, const char *fmt, ...) {
     const char *p = fmt;
     int arg_idx = 0;
     int is_long = 0;
-#ifdef __CC90__
+#if defined(__CCIA__) || defined(__CC90__)
 #ifdef TARGET_I386
     a1 = *((const char **)&fmt + 1);
     a2 = *((const char **)&fmt + 2);
