@@ -19,7 +19,8 @@ jobs:
         # sudo apt-get upgrade
         sudo apt-get install clang \
           gcc-multilib \
-          qemu-user-static
+          qemu-user-static \
+          lld
     - name: make
       run: make
     - name: make test
