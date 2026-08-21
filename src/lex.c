@@ -437,14 +437,20 @@ static Token *read_number_literal(Lexer *l) {
         return tok;
     } else {
         Token *tok = token_new(TOK_INT_LIT, sb->data, l->filename, start_line, start_col);
-        tok->is_unsigned = is_unsigned;
         if (is_hex) {
             tok->int_val = (long)strtoul(sb->data, NULL, 16);
+            if ((unsigned long)tok->int_val > 2147483647UL && (unsigned long)tok->int_val <= 4294967295UL) {
+                is_unsigned = 1;
+            }
         } else if (is_oct) {
             tok->int_val = (long)strtoul(sb->data, NULL, 8);
+            if ((unsigned long)tok->int_val > 2147483647UL && (unsigned long)tok->int_val <= 4294967295UL) {
+                is_unsigned = 1;
+            }
         } else {
             tok->int_val = (long)strtoul(sb->data, NULL, 10);
         }
+        tok->is_unsigned = is_unsigned;
         strbuf_free(sb);
         return tok;
     }

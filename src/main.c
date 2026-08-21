@@ -345,9 +345,9 @@ int main(int argc, char **argv) {
 #ifdef TARGET_RISCV32
         sprintf(cmd, "clang --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -c -o %s %s", obj_file, asm_file);
 #elif defined(TARGET_I386)
-        sprintf(cmd, "as --32 -o %s %s", obj_file, asm_file);
+        sprintf(cmd, "clang -m32 -c -o %s %s", obj_file, asm_file);
 #else
-        sprintf(cmd, "as -o %s %s", obj_file, asm_file);
+        sprintf(cmd, "clang -c -o %s %s", obj_file, asm_file);
 #endif
         if (system(cmd) != 0) {
             fprintf(stderr, "ccia: assembler failed\n");

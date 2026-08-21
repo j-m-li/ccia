@@ -6,7 +6,12 @@
 #ifndef _ERRNO_H
 #define _ERRNO_H
 
+#if defined(__riscv) || defined(TARGET_RISCV32)
 extern int errno;
+#else
+extern int *__errno_location(void);
+#define errno (*__errno_location())
+#endif
 
 #define EPERM            1      /* Operation not permitted */
 #define ENOENT           2      /* No such file or directory */

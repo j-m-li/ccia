@@ -46,16 +46,17 @@
 #define S_IWOTH  0002
 #define S_IXOTH  0001
 
-/* Linux RV32 (asm-generic) struct stat */
+#if defined(__riscv) || defined(__riscv__)
+/* Linux RV32 (asm-generic) struct stat (80 bytes) */
 struct stat {
-    dev_t         st_dev;
-    ino_t         st_ino;
+    unsigned long st_dev;
+    unsigned long st_ino;
     mode_t        st_mode;
     nlink_t       st_nlink;
     uid_t         st_uid;
     gid_t         st_gid;
-    dev_t         st_rdev;
-    unsigned long long __pad1;
+    unsigned long st_rdev;
+    unsigned long __pad1;
     off_t         st_size;
     blksize_t     st_blksize;
     int           __pad2;
@@ -69,6 +70,54 @@ struct stat {
     unsigned int  __unused4;
     unsigned int  __unused5;
 };
+#elif defined(__i386__) || defined(__i386)
+/* Linux i386 (glibc) struct stat (88 bytes) */
+struct stat {
+    unsigned long st_dev;
+    unsigned long __pad_dev;
+    unsigned int  __pad0;
+    unsigned long st_ino;
+    mode_t        st_mode;
+    nlink_t       st_nlink;
+    uid_t         st_uid;
+    gid_t         st_gid;
+    unsigned long st_rdev;
+    unsigned long __pad_rdev;
+    unsigned int  __pad1;
+    off_t         st_size;
+    blksize_t     st_blksize;
+    blkcnt_t      st_blocks;
+    time_t        st_atime;
+    unsigned long st_atime_nsec;
+    time_t        st_mtime;
+    unsigned long st_mtime_nsec;
+    time_t        st_ctime;
+    unsigned long st_ctime_nsec;
+    unsigned int  __unused[2];
+};
+#else
+/* Linux x86_64 (glibc) struct stat (144 bytes) */
+struct stat {
+    unsigned long st_dev;
+    unsigned long st_ino;
+    unsigned long st_nlink;
+    unsigned int  st_mode;
+    unsigned int  st_uid;
+    unsigned int  st_gid;
+    unsigned int  __pad0;
+    unsigned long st_rdev;
+    long          st_size;
+    long          st_blksize;
+    long          st_blocks;
+    long          st_atime;
+    unsigned long st_atime_nsec;
+    long          st_mtime;
+    unsigned long st_mtime_nsec;
+    long          st_ctime;
+    unsigned long st_ctime_nsec;
+    long          __glibc_reserved[3];
+};
+#endif
 
 int stat(const char *path, struct stat *buf);
 int fstat(int fd, struct stat *buf);

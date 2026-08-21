@@ -1772,8 +1772,10 @@ AstNode *parser_parse(Parser *p) {
             p->current_func_locals = vec_new();
 #ifdef TARGET_RISCV32
             p->current_stack_offset = 32;
-#else
+#elif defined(TARGET_I386)
             p->current_stack_offset = 0;
+#else
+            p->current_stack_offset = (type && type->is_varargs) ? 192 : 48;
 #endif
 
             func_node->u.func_def.sym = sym;
@@ -1804,8 +1806,11 @@ AstNode *parser_parse(Parser *p) {
                     Param *param = (Param *)vec_get(type->params, i);
                     if (param->name) {
                         Symbol *psym = symbol_new(SYM_VAR, param->name, param->type);
-                        int psize = (param->type->size + 3) & ~3;
-                        if (psize < 4) psize = 4;
+                        int psize = 4;
+                        if (param->type && (param->type->kind == TYPE_STRUCT || param->type->kind == TYPE_UNION || param->type->kind == TYPE_DOUBLE || param->type->kind == TYPE_LDOUBLE)) {
+                            psize = (param->type->size + 3) & ~3;
+                            if (psize < 4) psize = 4;
+                        }
                         psym->stack_offset = param_offset;
                         param_offset += psize;
                         scope_add_symbol(psym);
@@ -1814,16 +1819,27 @@ AstNode *parser_parse(Parser *p) {
                     }
                 }
 #else
+                int reg_idx = 0;
+                int stack_idx = 0;
                 for (i = 0; i < type->params->size; i++) {
                     Param *param = (Param *)vec_get(type->params, i);
                     if (param->name) {
                         Symbol *psym = symbol_new(SYM_VAR, param->name, param->type);
-                        if (i < 6) {
-                            p->current_stack_offset += (param->type->size + 7) & ~7;
+                        int psize = 8;
+                        int words = 1;
+                        if (param->type && (param->type->kind == TYPE_STRUCT || param->type->kind == TYPE_UNION)) {
+                            psize = (param->type->size + 7) & ~7;
+                            if (psize < 8) psize = 8;
+                            words = psize / 8;
+                        }
+                        if (reg_idx + words <= 6) {
+                            p->current_stack_offset += psize;
                             psym->stack_offset = -p->current_stack_offset;
+                            reg_idx += words;
                         } else {
                             /* System V AMD64 ABI stack arguments */
-                            psym->stack_offset = 16 + (i - 6) * 8;
+                            psym->stack_offset = 16 + stack_idx * 8;
+                            stack_idx += words;
                         }
                         scope_add_symbol(psym);
                         vec_push(func_node->u.func_def.params, psym);

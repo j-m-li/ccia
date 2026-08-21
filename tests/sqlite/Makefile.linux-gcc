@@ -64,6 +64,7 @@ EXE =
 #    as BCC, unless you are cross-compiling.
 #
 TCC = ../../ccia-rv32i -I../../include/riscv32 
+EMU ?= qemu-riscv32-static
 #TCC = gcc -g -O0 -Wall
 #TCC = gcc -g -O0 -Wall -fprofile-arcs -ftest-coverage
 #TCC = /opt/mingw/bin/i386-mingw32-gcc -O6

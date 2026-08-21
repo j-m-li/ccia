@@ -161,6 +161,7 @@ int type_equal(Type *a, Type *b) {
     if (a == b) return 1;
     if (!a || !b) return 0;
     if (a->kind != b->kind) return 0;
+    if (a->is_unsigned != b->is_unsigned) return 0;
     if (a->kind == TYPE_PTR || a->kind == TYPE_ARRAY) {
         return type_equal(a->base, b->base);
     }
@@ -188,6 +189,8 @@ int type_is_compatible(Type *a, Type *b) {
 Type *type_max(Type *a, Type *b) {
     if (!a) return b;
     if (!b) return a;
+    if (type_is_pointer(a)) return a;
+    if (type_is_pointer(b)) return b;
     if (a->kind == TYPE_LDOUBLE || b->kind == TYPE_LDOUBLE) return type_ldouble;
     if (a->kind == TYPE_DOUBLE || b->kind == TYPE_DOUBLE) return type_double;
     if (a->kind == TYPE_FLOAT || b->kind == TYPE_FLOAT) return type_float;

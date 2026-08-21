@@ -33,21 +33,17 @@ static char *gen_asm_label(CodeGen *gen, const char *prefix) {
 }
 
 static void emit(CodeGen *gen, const char *fmt, ...) {
-    const char *a1;
-    const char *a2;
+    const char *args[6];
     const char *p = fmt;
     int arg_idx = 0;
     int is_long = 0;
-#if defined(__CCIA__) || defined(__CC90__)
-    a1 = *((const char **)&fmt - 1);
-    a2 = *((const char **)&fmt - 2);
-#else
+    int i;
     va_list ap;
     va_start(ap, fmt);
-    a1 = va_arg(ap, char *);
-    a2 = va_arg(ap, char *);
+    for (i = 0; i < 6; i++) {
+        args[i] = va_arg(ap, char *);
+    }
     va_end(ap);
-#endif
 
     while (*p) {
         if (*p == '%' && *(p + 1) == '%') {
@@ -58,32 +54,32 @@ static void emit(CodeGen *gen, const char *fmt, ...) {
             is_long = 0;
             if (*p == 'l') { is_long = 1; p++; }
             if (*p == 's') {
-                const char *s = (arg_idx == 0) ? a1 : a2;
+                const char *s = (arg_idx < 6) ? args[arg_idx] : NULL;
                 if (s) fputs(s, gen->out);
                 arg_idx++;
                 p++;
             } else if (*p == 'd' || *p == 'i') {
                 if (is_long) {
-                    long val = (arg_idx == 0) ? (long)a1 : (long)a2;
+                    long val = (arg_idx < 6) ? (long)args[arg_idx] : 0;
                     fprintf(gen->out, "%ld", val);
                 } else {
-                    int val = (arg_idx == 0) ? (int)(long)a1 : (int)(long)a2;
+                    int val = (arg_idx < 6) ? (int)(long)args[arg_idx] : 0;
                     fprintf(gen->out, "%d", val);
                 }
                 arg_idx++;
                 p++;
             } else if (*p == 'u') {
                 if (is_long) {
-                    unsigned long val = (arg_idx == 0) ? (unsigned long)a1 : (unsigned long)a2;
+                    unsigned long val = (arg_idx < 6) ? (unsigned long)args[arg_idx] : 0;
                     fprintf(gen->out, "%lu", val);
                 } else {
-                    unsigned int val = (arg_idx == 0) ? (unsigned int)(long)a1 : (unsigned int)(long)a2;
+                    unsigned int val = (arg_idx < 6) ? (unsigned int)(long)args[arg_idx] : 0;
                     fprintf(gen->out, "%u", val);
                 }
                 arg_idx++;
                 p++;
             } else if (*p == 'c') {
-                int val = (arg_idx == 0) ? (int)(long)a1 : (int)(long)a2;
+                int val = (arg_idx < 6) ? (int)(long)args[arg_idx] : 0;
                 fputc(val, gen->out);
                 arg_idx++;
                 p++;
@@ -590,6 +586,52 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             int step = 1;
             int is_unsigned = node->type && node->type->is_unsigned;
             if (node->type && node->type->base) step = node->type->base->size;
+            if (node->type && type_is_floating(node->type)) {
+                gen_lval(gen, lhs);
+                emit(gen, "    pushq %%rax"); /* save &lhs */
+                gen_load(gen, node->type);
+                emit(gen, "    pushq %%rax"); /* save lhs value */
+                gen_expr(gen, node->u.binop.rhs);
+                if (node->u.binop.rhs->type && !type_equal(node->u.binop.rhs->type, node->type)) {
+                    gen_cast_to(gen, node->u.binop.rhs->type, node->type);
+                }
+                emit(gen, "    movq %%rax, %%rsi"); /* rhs */
+                emit(gen, "    popq %%rdi"); /* lhs */
+                if (node->type->kind == TYPE_FLOAT) {
+                    switch (node->kind) {
+                        case AST_ADD_ASSIGN: emit_call(gen, "__addsf3"); break;
+                        case AST_SUB_ASSIGN: emit_call(gen, "__subsf3"); break;
+                        case AST_MUL_ASSIGN: emit_call(gen, "__mulsf3"); break;
+                        case AST_DIV_ASSIGN: emit_call(gen, "__divsf3"); break;
+                        default: break;
+                    }
+                } else if (node->type->kind == TYPE_DOUBLE) {
+                    switch (node->kind) {
+                        case AST_ADD_ASSIGN: emit_call(gen, "__adddf3"); break;
+                        case AST_SUB_ASSIGN: emit_call(gen, "__subdf3"); break;
+                        case AST_MUL_ASSIGN: emit_call(gen, "__muldf3"); break;
+                        case AST_DIV_ASSIGN: emit_call(gen, "__divdf3"); break;
+                        default: break;
+                    }
+                } else if (node->type->kind == TYPE_LDOUBLE) {
+                    int off = get_ldouble_temp(gen);
+                    emit(gen, "    movq %%rsi, %%rdx"); /* rhs */
+                    emit(gen, "    movq %%rdi, %%rsi"); /* lhs */
+                    emit(gen, "    leaq -%d(%%rbp), %%rdi", off); /* res */
+                    switch (node->kind) {
+                        case AST_ADD_ASSIGN: emit_call(gen, "__addtf3"); break;
+                        case AST_SUB_ASSIGN: emit_call(gen, "__subtf3"); break;
+                        case AST_MUL_ASSIGN: emit_call(gen, "__multf3"); break;
+                        case AST_DIV_ASSIGN: emit_call(gen, "__divtf3"); break;
+                        default: break;
+                    }
+                    emit(gen, "    leaq -%d(%%rbp), %%rax", off);
+                }
+                emit(gen, "    popq %%rcx"); /* &lhs */
+                gen_store(gen, node->type);
+                return;
+            }
+
             gen_lval(gen, lhs);
             emit(gen, "    pushq %%rax");
             gen_load(gen, node->type);
@@ -706,9 +748,27 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         case AST_CALL: {
             Vector *args = node->u.call.args;
             int num_args = args ? args->size : 0;
-            int num_stack_args = num_args > 6 ? (num_args - 6) : 0;
-            int stack_pad = (num_stack_args % 2 != 0) ? 8 : 0;
             int i;
+            int total_words = 0;
+            int reg_words_count = 0;
+            int stack_words_count = 0;
+            int stack_pad = 0;
+            int *arg_words = (int *)c90_malloc((num_args > 0 ? num_args : 1) * sizeof(int));
+
+            for (i = 0; i < num_args; i++) {
+                AstNode *arg = (AstNode *)vec_get(args, i);
+                int words = 1;
+                if (arg->type && (arg->type->kind == TYPE_STRUCT || arg->type->kind == TYPE_UNION)) {
+                    int psize = (arg->type->size + 7) & ~7;
+                    if (psize < 8) psize = 8;
+                    words = psize / 8;
+                }
+                arg_words[i] = words;
+                total_words += words;
+            }
+            reg_words_count = total_words > 6 ? 6 : total_words;
+            stack_words_count = total_words > 6 ? (total_words - 6) : 0;
+            stack_pad = (stack_words_count % 2 != 0) ? 8 : 0;
 
             if (node->u.call.func->kind == AST_VAR && node->u.call.func->u.sym->kind == SYM_FUNC) {
                 const char *fname = node->u.call.func->u.sym->name;
@@ -718,6 +778,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                         emit(gen, "    rolw $8, %%ax");
                         emit(gen, "    movzwq %%ax, %%rax");
                     }
+                    free(arg_words);
                     return;
                 }
                 if (strcmp(fname, "__builtin_bswap32") == 0) {
@@ -726,6 +787,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                         emit(gen, "    bswapl %%eax");
                         emit(gen, "    movl %%eax, %%eax");
                     }
+                    free(arg_words);
                     return;
                 }
                 if (strcmp(fname, "__builtin_bswap64") == 0) {
@@ -733,29 +795,33 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                         gen_expr(gen, (AstNode *)vec_get(node->u.call.args, 0));
                         emit(gen, "    bswapq %%rax");
                     }
+                    free(arg_words);
                     return;
                 }
                 if (strcmp(fname, "__builtin_expect") == 0) {
                     if (node->u.call.args && node->u.call.args->size > 0) {
                         gen_expr(gen, (AstNode *)vec_get(node->u.call.args, 0));
                     }
+                    free(arg_words);
                     return;
                 }
                 if (strcmp(fname, "__builtin_constant_p") == 0) {
                     emit(gen, "    movq $0, %%rax");
+                    free(arg_words);
                     return;
                 }
                 if (strcmp(fname, "__builtin_va_start") == 0) {
                     if (node->u.call.args && node->u.call.args->size > 0) {
                         int num_params = gen->current_func && gen->current_func->type && gen->current_func->type->params ?
                                          gen->current_func->type->params->size : 0;
-                        int va_offset = (num_params < 6) ? -(num_params + 1) * 8 : (16 + (num_params - 6) * 8);
+                        int va_offset = -192 + num_params * 8;
                         gen_lval(gen, (AstNode *)vec_get(node->u.call.args, 0));
                         emit(gen, "    pushq %%rax");
                         emit(gen, "    leaq %d(%%rbp), %%rax", va_offset);
                         emit(gen, "    popq %%rcx");
                         emit(gen, "    movq %%rax, (%%rcx)");
                     }
+                    free(arg_words);
                     return;
                 }
                 if (strcmp(fname, "__builtin_va_copy") == 0) {
@@ -766,9 +832,11 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                         emit(gen, "    popq %%rcx");
                         emit(gen, "    movq %%rcx, (%%rax)");
                     }
+                    free(arg_words);
                     return;
                 }
                 if (strcmp(fname, "__builtin_va_end") == 0) {
+                    free(arg_words);
                     return;
                 }
             }
@@ -777,42 +845,51 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 emit(gen, "    subq $8, %%rsp");
             }
 
-            /* Push stack arguments (args 7+) in reverse order */
-            for (i = num_args - 1; i >= 6; i--) {
+            /* Push all arguments from right to left */
+            for (i = num_args - 1; i >= 0; i--) {
                 AstNode *arg = (AstNode *)vec_get(args, i);
-                gen_expr(gen, arg);
-                emit(gen, "    pushq %%rax");
+                int words = arg_words[i];
+                if (arg->type && (arg->type->kind == TYPE_STRUCT || arg->type->kind == TYPE_UNION)) {
+                    int w;
+                    gen_expr(gen, arg);
+                    for (w = words - 1; w >= 0; w--) {
+                        emit(gen, "    pushq %d(%%rax)", w * 8);
+                    }
+                } else {
+                    gen_expr(gen, arg);
+                    emit(gen, "    pushq %%rax");
+                }
             }
-
-            /* Evaluate and push first 6 arguments */
-            for (i = 0; i < num_args && i < 6; i++) {
-                AstNode *arg = (AstNode *)vec_get(args, i);
-                gen_expr(gen, arg);
-                emit(gen, "    pushq %%rax");
-            }
-
-            /* Pop first 6 arguments into ABI registers */
-            for (i = (num_args < 6 ? num_args : 6) - 1; i >= 0; i--) {
-                emit(gen, "    popq %s", arg_regs64[i]);
-            }
-
-            /* Variadic calls require %al = 0 for number of vector registers used */
-            emit(gen, "    movb $0, %%al");
 
             if (node->u.call.func->kind == AST_VAR && node->u.call.func->u.sym->kind == SYM_FUNC) {
+                /* Pop first reg_words_count arguments into ABI registers */
+                for (i = 0; i < reg_words_count; i++) {
+                    emit(gen, "    popq %s", arg_regs64[i]);
+                }
+                emit(gen, "    movb $0, %%al");
                 emit(gen, "    call %s", node->u.call.func->u.sym->name);
             } else {
                 gen_expr(gen, node->u.call.func);
-                emit(gen, "    call *%%rax");
+                emit(gen, "    pushq %%rax");
+                for (i = 0; i < reg_words_count; i++) {
+                    emit(gen, "    movq %d(%%rsp), %s", (i + 1) * 8, arg_regs64[i]);
+                }
+                emit(gen, "    popq %%r11");
+                if (reg_words_count > 0) {
+                    emit(gen, "    addq $%d, %%rsp", reg_words_count * 8);
+                }
+                emit(gen, "    movb $0, %%al");
+                emit(gen, "    call *%%r11");
             }
 
             /* Clean up stack arguments */
-            if (num_stack_args > 0) {
-                emit(gen, "    addq $%d, %%rsp", num_stack_args * 8);
+            if (stack_words_count > 0) {
+                emit(gen, "    addq $%d, %%rsp", stack_words_count * 8);
             }
             if (stack_pad) {
                 emit(gen, "    addq $8, %%rsp");
             }
+            free(arg_words);
             return;
         }
 
@@ -820,31 +897,27 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             int size = node->type ? (node->type->size > 0 ? node->type->size : 8) : 8;
             int aligned_size = (size + 7) & ~7;
             if (aligned_size < 8) aligned_size = 8;
+
+            /* 1. Evaluate current ap value (address of current argument) */
             gen_expr(gen, node->u.va_arg.ap);
-            emit(gen, "    pushq %%rax");
-            if (node->u.va_arg.ap->kind == AST_VAR) {
-                Symbol *sym = node->u.va_arg.ap->u.sym;
-                emit(gen, "    addq $%d, %d(%%rbp)", aligned_size, sym->stack_offset);
+            emit(gen, "    pushq %%rax"); /* save curr_arg */
+
+            /* 2. Compute new ap = curr_arg + aligned_size */
+            emit(gen, "    movq %%rax, %%rcx");
+            emit(gen, "    addq $%d, %%rcx", aligned_size);
+
+            /* 3. Store new ap back into the ap variable */
+            emit(gen, "    pushq %%rcx"); /* save new_ap */
+            gen_lval(gen, node->u.va_arg.ap); /* %rax = &ap */
+            emit(gen, "    popq %%rcx"); /* %rcx = new_ap */
+            emit(gen, "    movq %%rcx, (%%rax)"); /* ap = new_ap */
+
+            /* 4. Load return value from curr_arg */
+            emit(gen, "    popq %%rax"); /* %rax = curr_arg */
+            if (node->type && (node->type->kind == TYPE_STRUCT || node->type->kind == TYPE_UNION || node->type->kind == TYPE_LDOUBLE)) {
+                /* For aggregate/ldouble return pointer to it */
             } else {
-                gen_lval(gen, node->u.va_arg.ap);
-                emit(gen, "    addq $%d, (%%rax)", aligned_size);
-            }
-            emit(gen, "    popq %%rax");
-            if (node->type && node->type->kind == TYPE_FLOAT) {
-                emit(gen, "    movss (%%rax), %%xmm0");
-            } else if (node->type && node->type->kind == TYPE_DOUBLE) {
-                emit(gen, "    movsd (%%rax), %%xmm0");
-            } else if (size == 1) {
-                if (node->type && node->type->is_unsigned) emit(gen, "    movzbq (%%rax), %%rax");
-                else emit(gen, "    movsbq (%%rax), %%rax");
-            } else if (size == 2) {
-                if (node->type && node->type->is_unsigned) emit(gen, "    movzwq (%%rax), %%rax");
-                else emit(gen, "    movswq (%%rax), %%rax");
-            } else if (size == 4) {
-                if (node->type && node->type->is_unsigned) emit(gen, "    movl (%%rax), %%eax");
-                else emit(gen, "    movslq (%%rax), %%rax");
-            } else {
-                emit(gen, "    movq (%%rax), %%rax");
+                gen_load(gen, node->type);
             }
             return;
         }
@@ -938,8 +1011,14 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                       (rhs->type && rhs->type->is_unsigned);
 
         gen_expr(gen, lhs);
+        if (!is_ptr_lhs && !is_ptr_rhs && common_type && type_is_integer(common_type) && lhs->type && !type_equal(lhs->type, common_type)) {
+            gen_cast_to(gen, lhs->type, common_type);
+        }
         emit(gen, "    pushq %%rax");
         gen_expr(gen, rhs);
+        if (!is_ptr_lhs && !is_ptr_rhs && common_type && type_is_integer(common_type) && rhs->type && !type_equal(rhs->type, common_type)) {
+            gen_cast_to(gen, rhs->type, common_type);
+        }
         emit(gen, "    movq %%rax, %%rcx");
         emit(gen, "    popq %%rax");
 
@@ -1557,24 +1636,41 @@ static void gen_func_def(CodeGen *gen, AstNode *func_node) {
 
     /* Store incoming register arguments into parameter stack locations */
     if (params) {
-        for (i = 0; i < params->size && i < 6; i++) {
+        int reg_idx = 0;
+        for (i = 0; i < params->size; i++) {
             Symbol *param_sym = (Symbol *)vec_get(params, i);
             int psize = param_sym->type ? param_sym->type->size : 8;
-            if (psize == 1) {
-                emit(gen, "    movb %s, %d(%%rbp)", arg_regs8[i], param_sym->stack_offset);
-            } else if (psize == 2) {
-                emit(gen, "    movw %s, %d(%%rbp)", arg_regs16[i], param_sym->stack_offset);
-            } else if (psize == 4) {
-                emit(gen, "    movl %s, %d(%%rbp)", arg_regs32[i], param_sym->stack_offset);
-            } else {
-                emit(gen, "    movq %s, %d(%%rbp)", arg_regs64[i], param_sym->stack_offset);
+            int words = (psize + 7) / 8;
+            if (words < 1) words = 1;
+            if (reg_idx + words <= 6) {
+                if (param_sym->type && (param_sym->type->kind == TYPE_STRUCT || param_sym->type->kind == TYPE_UNION)) {
+                    int w;
+                    for (w = 0; w < words; w++) {
+                        emit(gen, "    movq %s, %d(%%rbp)", arg_regs64[reg_idx + w], param_sym->stack_offset + w * 8);
+                    }
+                    reg_idx += words;
+                } else {
+                    if (psize == 1) {
+                        emit(gen, "    movb %s, %d(%%rbp)", arg_regs8[reg_idx], param_sym->stack_offset);
+                    } else if (psize == 2) {
+                        emit(gen, "    movw %s, %d(%%rbp)", arg_regs16[reg_idx], param_sym->stack_offset);
+                    } else if (psize == 4) {
+                        emit(gen, "    movl %s, %d(%%rbp)", arg_regs32[reg_idx], param_sym->stack_offset);
+                    } else {
+                        emit(gen, "    movq %s, %d(%%rbp)", arg_regs64[reg_idx], param_sym->stack_offset);
+                    }
+                    reg_idx++;
+                }
             }
         }
     }
     if (sym->type && sym->type->is_varargs) {
-        int start_reg = params ? params->size : 0;
-        for (i = start_reg; i < 6; i++) {
-            emit(gen, "    movq %s, %d(%%rbp)", arg_regs64[i], -(i + 1) * 8);
+        for (i = 0; i < 6; i++) {
+            emit(gen, "    movq %s, %d(%%rbp)", arg_regs64[i], -192 + i * 8);
+        }
+        for (i = 0; i < 16; i++) {
+            emit(gen, "    movq %d(%%rbp), %%r10", 16 + i * 8);
+            emit(gen, "    movq %%r10, %d(%%rbp)", -192 + (6 + i) * 8);
         }
     }
 

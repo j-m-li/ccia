@@ -238,12 +238,29 @@ clean:
 	rm -f $(TARGET_I386) $(STAGE2_I386_TARGET) $(STAGE3_I386_TARGET)
 	rm -f $(TARGET_RV32I) $(STAGE2_RV32I_TARGET) $(STAGE3_RV32I_TARGET)
 	rm -f *.o *.s *.stage2.s *.stage3.s *.s2.s *.s3.s *.i386*.s *.rv32i*.s src/*.s src/*.s2.s src/*.s3.s src/*.i386*.s src/*.rv32i*.s src/*.tmp.s
-	rm -f a.out tests/*.o tests/*.s tests/*.bin tests/stb.png tests/stb.jpg
+# SQLite Test Suites (x86_64, i386, RV32I)
+test-sqlite-x86_64: $(TARGET_X86_64)
+	@echo "=== Building and Running SQLite 2.8.17 test suite with ccia (x86_64) ==="
+	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_X86_64) -I../../include/riscv32" BCC="clang -g -O2 -ansi" EMU=""
+	@echo "SUCCESS: SQLite 2.8.17 passed all tests on x86_64!"
+
+test-sqlite-i386: $(TARGET_I386)
+	@echo "=== Building and Running SQLite 2.8.17 test suite with ccia-i386 (i386 32-bit) ==="
+	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_I386) -I../../include/riscv32" BCC="clang -g -O2 -ansi" EMU=""
+	@echo "SUCCESS: SQLite 2.8.17 passed all tests on i386!"
+
+test-sqlite-rv32i: $(TARGET_RV32I)
+	@echo "=== Building and Running SQLite 2.8.17 test suite with ccia-rv32i (RISC-V 32-bit RV32I) ==="
+	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_RV32I) -I../../include/riscv32" BCC="clang -g -O2 -ansi" EMU="$(QEMU_RV32)"
+	@echo "SUCCESS: SQLite 2.8.17 passed all tests on RISC-V 32-bit RV32I!"
+
+test-sqlite: test-sqlite-x86_64 test-sqlite-i386 test-sqlite-rv32i
+	@echo "SUCCESS: SQLite 2.8.17 passed all test suites across all 3 architectures (x86_64, i386, RV32I)!"
 
 triple-test: test-self
 trpile-test: test-self
 
-.PHONY: all self self-i386 self-rv32i bootstrap bootstrap-i386 bootstrap-rv32i test test-x86_64 test-i386 test-rv32i test-self triple-test trpile-test clean
+.PHONY: all self self-i386 self-rv32i bootstrap bootstrap-i386 bootstrap-rv32i test test-x86_64 test-i386 test-rv32i test-self test-sqlite test-sqlite-x86_64 test-sqlite-i386 test-sqlite-rv32i triple-test trpile-test clean
 
 
 

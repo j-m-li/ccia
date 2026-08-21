@@ -258,7 +258,7 @@ static int test_disk_db(void) {
 
 int main(void) {
     printf("==========================================\n");
-    printf(" Running SQLite 2.8.17 C API Test Suite (RV32I)\n");
+    printf(" Running SQLite 2.8.17 C API Test Suite\n");
     printf("==========================================\n");
 
     test_version();

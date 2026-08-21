@@ -340,15 +340,15 @@ fulltest:	testfixture$(EXE) sqlite$(EXE)
 
 test:	sqlite$(EXE) test_suite$(EXE)
 	@echo "=========================================="
-	@echo " Running SQLite RV32I C API Unit Tests    "
+	@echo " Running SQLite C API Unit Tests          "
 	@echo "=========================================="
-	qemu-riscv32-static ./test_suite$(EXE)
+	$(EMU) ./test_suite$(EXE)
 	@echo "=========================================="
-	@echo " Running SQLite RV32I SQL Test Suite      "
+	@echo " Running SQLite SQL Test Suite            "
 	@echo "=========================================="
-	qemu-riscv32-static ./sqlite$(EXE) :memory: < test_suite.sql
+	$(EMU) ./sqlite$(EXE) :memory: < test_suite.sql
 	@echo "=========================================="
-	@echo " All SQLite RV32I Tests Passed!           "
+	@echo " All SQLite Tests Passed!                 "
 	@echo "=========================================="
 
 index.html:	$(TOP)/www/index.tcl last_change
