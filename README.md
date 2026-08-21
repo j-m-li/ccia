@@ -4,7 +4,7 @@ agy --conversation=74f9a373-71da-462a-80d8-e56dc0a222e4
 
 **CCIA** is a complete, self-contained, self-hosting ANSI C90 (ISO/IEC 9899:1990, commonly referred to as C89) compiler written strictly in portable ANSI C90. It targets **x86_64** (System V AMD64 ABI), **32-bit x86 / i386** (cdecl ABI), and **32-bit RISC-V RV32I** (ILP32 ABI) Linux using Clang/LLD.
 
-This project is dedicated to the **Public Domain** under [The Unlicense](UNLICENSE).
+This project is dedicated to the **Public Domain** under [The Unlicense](LICENSE.txt).
 
 ---
 
@@ -170,7 +170,7 @@ This project is dedicated to the **Public Domain** under [The Unlicense](UNLICEN
 │       ├── test_suite.sql  # Complex SQL regression queries (joins, views, triggers)
 │       └── Makefile.linux-gcc # SQLite build and test makefile
 ├── Makefile                # Build system, bootstrap verification, and test targets
-└── UNLICENSE               # Public Domain dedication
+└── LICENSE.txt             # Public Domain dedication
 ```
 
 ---
@@ -315,4 +315,4 @@ This is free and unencumbered software released into the **Public Domain**.
 
 Anyone is free to copy, modify, publish, use, compile, sell, or distribute this software, either in source code form or as a compiled binary, for any purpose, commercial or non-commercial, and by any means.
 
-For more information, please refer to the [UNLICENSE](UNLICENSE) file or <https://unlicense.org/>.
+For more information, please refer to the [UNLICENSE](LICENSE.txt) file or <https://unlicense.org/>.
