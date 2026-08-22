@@ -66,10 +66,13 @@ static void test_float64(void) {
 
     printf("Testing double (64-bit)...\n");
     c = a + b; /* 16.5 */
+    printf("step 1a: c = a + b done\n");
     d = a - b; /* 8.5 */
+    printf("step 1b: d = a - b done\n");
     e = a * b; /* 50.0 */
+    printf("step 1c: e = a * b done\n");
     f = a / b; /* 3.125 */
-    printf("step 1: add/sub/mul/div done\n");
+    printf("step 1d: f = a / b done\n");
     ASSERT(c > 16.49 && c < 16.51, "double add");
     printf("step 2: add assert done\n");
     ASSERT(d > 8.49 && d < 8.51, "double sub");
