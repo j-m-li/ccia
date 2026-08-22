@@ -24,6 +24,16 @@ jobs:
     - name: make
       run: make
     - name: make test
-      run: make test
+      run: |
+        make test || {
+          echo "=== Debugging Failure ==="
+          if [ -f tests/test_float.bin ]; then
+            echo "--- Running under qemu-riscv32-static with debug ---"
+            qemu-riscv32-static -d unimp,guest_errors tests/test_float.bin || true
+            echo "--- Running under qemu-riscv32 with debug ---"
+            qemu-riscv32 -d unimp,guest_errors tests/test_float.bin || true
+          fi
+          exit 1
+        }
     - name: make triple-test
       run: make triple-test
