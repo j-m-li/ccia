@@ -20,32 +20,10 @@ jobs:
           gcc-multilib \
           qemu-user \
           qemu-user-static \
-          gdb-multiarch \
           lld
     - name: make
       run: make
     - name: make test
-      run: |
-        make test || {
-          echo "=== Debugging Failure ==="
-          if [ -f tests/test_float.bin ]; then
-            echo "--- Strace output ---"
-            qemu-riscv32-static -strace tests/test_float.bin || true
-            echo "--- GDB Remote Backtrace ---"
-            qemu-riscv32-static -g 1234 tests/test_float.bin &
-            QEMU_PID=$!
-            sleep 1
-            gdb-multiarch -batch \
-              -ex "target remote localhost:1234" \
-              -ex "continue" \
-              -ex "bt full" \
-              -ex "info registers" \
-              -ex "disassemble" \
-              -ex "kill" \
-              -ex "quit" tests/test_float.bin || true
-            kill $QEMU_PID 2>/dev/null || true
-          fi
-          exit 1
-        }
+      run: make test
     - name: make triple-test
       run: make triple-test

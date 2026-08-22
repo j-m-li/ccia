@@ -11,6 +11,7 @@ static void gen_stmt(CodeGen *gen, AstNode *node);
 
 CodeGen *codegen_new(FILE *out, AstNode *root) {
     CodeGen *gen = (CodeGen *)c90_malloc(sizeof(CodeGen));
+    memset(gen, 0, sizeof(CodeGen));
     gen->out = out;
     gen->root = root;
     gen->label_count = 1;
@@ -18,6 +19,8 @@ CodeGen *codegen_new(FILE *out, AstNode *root) {
     gen->break_stack = vec_new();
     gen->continue_stack = vec_new();
     gen->current_func = NULL;
+    gen->ldouble_slot = 0;
+    gen->current_stack_size = 0;
     return gen;
 }
 
