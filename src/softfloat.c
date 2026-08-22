@@ -823,15 +823,19 @@ static void parse_dec_f64(const char *str, soft_f64 *out) {
 #if defined(TARGET_RISCV32) || defined(__riscv)
 
 static soft_f64 d2sf(double d) {
+    f64_cast c;
     soft_f64 s;
-    memcpy(&s, &d, sizeof(double));
+    c.d = d;
+    s.lo = c.u.lo;
+    s.hi = c.u.hi;
     return s;
 }
 
 static double sf2d(soft_f64 s) {
-    double d;
-    memcpy(&d, &s, sizeof(double));
-    return d;
+    f64_cast c;
+    c.u.lo = s.lo;
+    c.u.hi = s.hi;
+    return c.d;
 }
 
 double __adddf3(double a, double b) {
@@ -948,20 +952,18 @@ unsigned long __fixunsdfdi(double a) {
 
 double __extendsfdf2(float a) {
     soft_f64 sr;
-    unsigned int u;
-    memcpy(&u, &a, sizeof(float));
-    f64_from_f32_impl(&sr, u);
+    f32_cast ca;
+    ca.f = a;
+    f64_from_f32_impl(&sr, ca.u);
     return sf2d(sr);
 }
 
 float __truncdfsf2(double a) {
     soft_f64 sa;
-    unsigned int u;
-    float f;
+    f32_cast cr;
     sa = d2sf(a);
-    u = f64_to_f32_impl(&sa);
-    memcpy(&f, &u, sizeof(float));
-    return f;
+    cr.u = f64_to_f32_impl(&sa);
+    return cr.f;
 }
 
 int soft_strto_f64(const char *str, void *out) {
