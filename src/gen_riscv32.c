@@ -743,7 +743,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
     case AST_CALL: {
         Vector *args = node->u.call.args;
         int num_args = args ? args->size : 0;
-        int i;
+        int i, j;
         int total_words = 0;
         int stack_words_count = 0;
         int is_direct = (node->u.call.func->kind == AST_VAR && node->u.call.func->u.sym->kind == SYM_FUNC);
@@ -864,16 +864,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 emit_lw_s0(gen, "t0", off_fn);
             }
         } else {
-            int total_bytes = (total_words * 4 + 15) & ~15;
-            int pad_bytes = total_bytes - total_words * 4;
-            if (pad_bytes > 0) {
-                emit(gen, "    addi sp, sp, -%d", pad_bytes);
-            }
-            /* Evaluate all args forward and push all words */
+            int stack_bytes = (stack_words_count * 4 + 15) & ~15;
+
+            /* Evaluate args forward, push each word (16-byte aligned per push) */
             for (i = 0; i < num_args; i++) {
                 AstNode *arg = (AstNode *)vec_get(args, i);
                 if (arg_pads[i]) {
-                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    addi sp, sp, -16");
                     emit(gen, "    sw zero, 0(sp)");
                 }
                 gen_expr(gen, arg);
@@ -881,33 +878,33 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                     int w;
                     for (w = 0; w < arg_words[i]; w++) {
                         emit(gen, "    lw t0, %d(a0)", w * 4);
-                        emit(gen, "    addi sp, sp, -4");
+                        emit(gen, "    addi sp, sp, -16");
                         emit(gen, "    sw t0, 0(sp)");
                     }
                 } else {
-                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    addi sp, sp, -16");
                     emit(gen, "    sw a0, 0(sp)");
                 }
             }
 
-            /* Load register words 0..7 into a0..a7 */
+            /* Load register words 0..7 into a0..a7 from their 16-byte slots */
             for (i = 0; i < 8; i++) {
-                int offset = (total_words - 1 - i) * 4;
+                int offset = (total_words - 1 - i) * 16;
                 emit(gen, "    lw a%d, %d(sp)", i, offset);
+            }
+
+            /* Allocate 16-byte aligned packed stack argument frame */
+            emit(gen, "    addi sp, sp, -%d", stack_bytes);
+
+            /* Copy stack arguments (words 8..total_words-1) into packed slots at 0(sp), 4(sp)... */
+            for (j = 0; j < stack_words_count; j++) {
+                int src_off = stack_bytes + (stack_words_count - 1 - j) * 16;
+                emit(gen, "    lw t1, %d(sp)", src_off);
+                emit(gen, "    sw t1, %d(sp)", j * 4);
             }
 
             if (!is_direct) {
                 emit_lw_s0(gen, "t0", off_fn);
-            }
-
-            /* Reverse the stack words so first stack arg is at 0(sp) */
-            for (i = 0; i < stack_words_count / 2; i++) {
-                int off_a = i * 4;
-                int off_b = (stack_words_count - 1 - i) * 4;
-                emit(gen, "    lw t1, %d(sp)", off_a);
-                emit(gen, "    lw t2, %d(sp)", off_b);
-                emit(gen, "    sw t2, %d(sp)", off_a);
-                emit(gen, "    sw t1, %d(sp)", off_b);
             }
         }
         free(arg_words);
@@ -920,8 +917,8 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         }
 
         if (total_words > 8) {
-            int total_bytes = (total_words * 4 + 15) & ~15;
-            emit(gen, "    addi sp, sp, %d", total_bytes);
+            int stack_bytes = (stack_words_count * 4 + 15) & ~15;
+            emit(gen, "    addi sp, sp, %d", total_words * 16 + stack_bytes);
         }
 
         if (node->type && node->type->kind == TYPE_DOUBLE) {
