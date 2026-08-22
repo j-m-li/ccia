@@ -313,8 +313,6 @@ static void gen_cast_to(CodeGen *gen, Type *from, Type *to) {
 
     if (to->kind == TYPE_DOUBLE) {
         int off = get_scratch_temp(gen);
-        emit(gen, "    mv a1, a0");
-        emit_addi(gen, "a0", "s0", off);
         if (from->kind == TYPE_FLOAT) {
             emit(gen, "    call __extendsfdf2");
         } else if (from->kind == TYPE_LDOUBLE) {
@@ -324,6 +322,9 @@ static void gen_cast_to(CodeGen *gen, Type *from, Type *to) {
         } else {
             emit(gen, "    call __floatsidf");
         }
+        emit_addi(gen, "t0", "s0", off);
+        emit(gen, "    sw a0, 0(t0)");
+        emit(gen, "    sw a1, 4(t0)");
         emit_addi(gen, "a0", "s0", off);
         return;
     }
@@ -352,8 +353,15 @@ static void gen_cast_to(CodeGen *gen, Type *from, Type *to) {
     }
 
     if (from->kind == TYPE_DOUBLE) {
-        if (to->is_unsigned) emit(gen, "    call __fixunsdfsi");
-        else emit(gen, "    call __fixdfsi");
+        emit(gen, "    lw a1, 4(a0)");
+        emit(gen, "    lw a0, 0(a0)");
+        if (to->kind == TYPE_FLOAT) {
+            emit(gen, "    call __truncdfsf2");
+        } else if (to->is_unsigned) {
+            emit(gen, "    call __fixunsdfsi");
+        } else {
+            emit(gen, "    call __fixdfsi");
+        }
         return;
     }
 
@@ -453,9 +461,12 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             emit(gen, "    call __negsf2");
         } else if (node->type && node->type->kind == TYPE_DOUBLE) {
             int off = get_scratch_temp(gen);
-            emit(gen, "    mv a1, a0");
-            emit_addi(gen, "a0", "s0", off);
+            emit(gen, "    lw a1, 4(a0)");
+            emit(gen, "    lw a0, 0(a0)");
             emit(gen, "    call __negdf2");
+            emit_addi(gen, "t0", "s0", off);
+            emit(gen, "    sw a0, 0(t0)");
+            emit(gen, "    sw a1, 4(t0)");
             emit_addi(gen, "a0", "s0", off);
         } else if (node->type && node->type->kind == TYPE_LDOUBLE) {
             int off = get_scratch_temp(gen);
@@ -500,22 +511,18 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 emit(gen, "    sw a0, 0(a1)");
                 emit(gen, "    addi sp, sp, 16");
             } else if (node->type->kind == TYPE_DOUBLE) {
-                int off_one = get_scratch_temp(gen);
-                int off_res = get_scratch_temp(gen);
-                emit_addi(gen, "t0", "s0", off_one);
-                emit(gen, "    sw zero, 0(t0)");
-                emit(gen, "    lui t1, 0x3ff00");
-                emit(gen, "    sw t1, 4(t0)");
-                emit(gen, "    lw a1, 0(sp)"); /* address of d */
-                emit_addi(gen, "a2", "s0", off_one);
-                emit_addi(gen, "a0", "s0", off_res);
+                emit(gen, "    lw a0, 0(sp)");
+                emit(gen, "    lw a1, 4(a0)");
+                emit(gen, "    lw a0, 0(a0)");
+                emit(gen, "    li a2, 0");
+                emit(gen, "    lui a3, 0x3ff00");
                 if (is_inc) emit(gen, "    call __adddf3");
                 else emit(gen, "    call __subdf3");
-                emit(gen, "    lw a1, 0(sp)");
-                emit_addi(gen, "a0", "s0", off_res);
-                gen_store(gen, node->type);
+                emit(gen, "    lw a2, 0(sp)");
+                emit(gen, "    sw a0, 0(a2)");
+                emit(gen, "    sw a1, 4(a2)");
+                emit(gen, "    mv a0, a2");
                 emit(gen, "    addi sp, sp, 16");
-                emit_addi(gen, "a0", "s0", off_res);
             } else if (node->type->kind == TYPE_LDOUBLE) {
                 int off_one = get_scratch_temp(gen);
                 int off_res = get_scratch_temp(gen);
@@ -581,28 +588,19 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 emit(gen, "    addi sp, sp, 32");
             } else if (node->type->kind == TYPE_DOUBLE) {
                 int off_orig = get_scratch_temp(gen);
-                int off_one = get_scratch_temp(gen);
-                int off_res = get_scratch_temp(gen);
-                /* Save original value */
-                emit(gen, "    lw t2, 0(sp)");
-                emit(gen, "    lw t0, 0(t2)");
-                emit(gen, "    lw t1, 4(t2)");
-                emit_addi(gen, "t2", "s0", off_orig);
-                emit(gen, "    sw t0, 0(t2)");
-                emit(gen, "    sw t1, 4(t2)");
-                /* Prepare 1.0 */
-                emit_addi(gen, "t0", "s0", off_one);
-                emit(gen, "    sw zero, 0(t0)");
-                emit(gen, "    lui t1, 0x3ff00");
-                emit(gen, "    sw t1, 4(t0)");
-                emit(gen, "    lw a1, 0(sp)"); /* address of d */
-                emit_addi(gen, "a2", "s0", off_one);
-                emit_addi(gen, "a0", "s0", off_res);
+                emit(gen, "    lw a0, 0(sp)");
+                emit(gen, "    lw a1, 4(a0)");
+                emit(gen, "    lw a0, 0(a0)");
+                emit_addi(gen, "t0", "s0", off_orig);
+                emit(gen, "    sw a0, 0(t0)");
+                emit(gen, "    sw a1, 4(t0)");
+                emit(gen, "    li a2, 0");
+                emit(gen, "    lui a3, 0x3ff00");
                 if (is_inc) emit(gen, "    call __adddf3");
                 else emit(gen, "    call __subdf3");
-                emit(gen, "    lw a1, 0(sp)");
-                emit_addi(gen, "a0", "s0", off_res);
-                gen_store(gen, node->type);
+                emit(gen, "    lw a2, 0(sp)");
+                emit(gen, "    sw a0, 0(a2)");
+                emit(gen, "    sw a1, 4(a2)");
                 emit(gen, "    addi sp, sp, 16");
                 emit_addi(gen, "a0", "s0", off_orig);
             } else if (node->type->kind == TYPE_LDOUBLE) {
@@ -729,15 +727,20 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 else if (node->kind == AST_MUL_ASSIGN) emit(gen, "    call __mulsf3");
                 else if (node->kind == AST_DIV_ASSIGN) emit(gen, "    call __divsf3");
             } else if (node->type->kind == TYPE_DOUBLE) {
-                int off = get_scratch_temp(gen);
-                emit(gen, "    mv a2, a1");
-                emit(gen, "    mv a1, a0");
-                emit_addi(gen, "a0", "s0", off);
+                emit(gen, "    lw a2, 0(a1)");
+                emit(gen, "    lw a3, 4(a1)");
+                emit(gen, "    lw a1, 4(a0)");
+                emit(gen, "    lw a0, 0(a0)");
                 if (node->kind == AST_ADD_ASSIGN) emit(gen, "    call __adddf3");
                 else if (node->kind == AST_SUB_ASSIGN) emit(gen, "    call __subdf3");
                 else if (node->kind == AST_MUL_ASSIGN) emit(gen, "    call __muldf3");
                 else if (node->kind == AST_DIV_ASSIGN) emit(gen, "    call __divdf3");
-                emit_addi(gen, "a0", "s0", off);
+                emit(gen, "    lw a2, 0(sp)");
+                emit(gen, "    sw a0, 0(a2)");
+                emit(gen, "    sw a1, 4(a2)");
+                emit(gen, "    mv a0, a2");
+                emit(gen, "    addi sp, sp, 16");
+                return;
             } else if (node->type->kind == TYPE_LDOUBLE) {
                 int off = get_scratch_temp(gen);
                 emit(gen, "    mv a2, a1");
@@ -1171,13 +1174,16 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 if (!type_equal(rhs->type, common_type)) {
                     gen_cast_to(gen, rhs->type, common_type);
                 }
-                /* rhs address is in a0, lhs address is at 0(sp) */
-                emit(gen, "    mv a2, a0");      /* rhs */
-                emit(gen, "    mv a1, sp");      /* lhs */
+                /* Load rhs (8 bytes) into a2:a3 */
+                emit(gen, "    lw a2, 0(a0)");
+                emit(gen, "    lw a3, 4(a0)");
+                /* Load lhs (8 bytes) from stack into a0:a1 */
+                emit(gen, "    lw a0, 0(sp)");
+                emit(gen, "    lw a1, 4(sp)");
+                emit(gen, "    addi sp, sp, 16");
+
                 if (node->kind == AST_EQ || node->kind == AST_NE || node->kind == AST_LT ||
                     node->kind == AST_LE || node->kind == AST_GT || node->kind == AST_GE) {
-                    emit(gen, "    mv a0, a1");  /* lhs in a0 */
-                    emit(gen, "    mv a1, a2");  /* rhs in a1 */
                     switch (node->kind) {
                     case AST_EQ:
                         emit(gen, "    call __eqdf2");
@@ -1206,15 +1212,15 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                         break;
                     default: break;
                     }
-                    emit(gen, "    addi sp, sp, 16");
                 } else {
                     int off = get_scratch_temp(gen);
-                    emit_addi(gen, "a0", "s0", off);
                     if (node->kind == AST_ADD) emit(gen, "    call __adddf3");
                     else if (node->kind == AST_SUB) emit(gen, "    call __subdf3");
                     else if (node->kind == AST_MUL) emit(gen, "    call __muldf3");
                     else if (node->kind == AST_DIV) emit(gen, "    call __divdf3");
-                    emit(gen, "    addi sp, sp, 16");
+                    emit_addi(gen, "t0", "s0", off);
+                    emit(gen, "    sw a0, 0(t0)");
+                    emit(gen, "    sw a1, 4(t0)");
                     emit_addi(gen, "a0", "s0", off);
                 }
             } else if (common_type->kind == TYPE_LDOUBLE) {

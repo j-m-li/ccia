@@ -3,6 +3,7 @@
  * See the UNLICENSE file or http://unlicense.org/ for details.
  */
 
+#include <string.h>
 #include "../include/softfloat.h"
 
 /* ========================================================================= */
@@ -819,7 +820,156 @@ static void parse_dec_f64(const char *str, soft_f64 *out) {
 /* Float64 Target Wrappers                                                   */
 /* ========================================================================= */
 
-#if defined(TARGET_I386) || defined(__i386__) || defined(TARGET_RISCV32) || defined(__riscv) || defined(TARGET_32BIT)
+#if defined(TARGET_RISCV32) || defined(__riscv)
+
+static soft_f64 d2sf(double d) {
+    soft_f64 s;
+    memcpy(&s, &d, sizeof(double));
+    return s;
+}
+
+static double sf2d(soft_f64 s) {
+    double d;
+    memcpy(&d, &s, sizeof(double));
+    return d;
+}
+
+double __adddf3(double a, double b) {
+    soft_f64 sa, sb, sr;
+    sa = d2sf(a);
+    sb = d2sf(b);
+    f64_add_impl(&sr, &sa, &sb);
+    return sf2d(sr);
+}
+
+double __subdf3(double a, double b) {
+    soft_f64 sa, sb, sr;
+    sa = d2sf(a);
+    sb = d2sf(b);
+    f64_sub_impl(&sr, &sa, &sb);
+    return sf2d(sr);
+}
+
+double __muldf3(double a, double b) {
+    soft_f64 sa, sb, sr;
+    sa = d2sf(a);
+    sb = d2sf(b);
+    f64_mul_impl(&sr, &sa, &sb);
+    return sf2d(sr);
+}
+
+double __divdf3(double a, double b) {
+    soft_f64 sa, sb, sr;
+    sa = d2sf(a);
+    sb = d2sf(b);
+    f64_div_impl(&sr, &sa, &sb);
+    return sf2d(sr);
+}
+
+double __negdf2(double a) {
+    soft_f64 sa;
+    sa = d2sf(a);
+    sa.hi ^= 0x80000000U;
+    return sf2d(sa);
+}
+
+int __eqdf2(double a, double b) {
+    soft_f64 sa, sb;
+    sa = d2sf(a);
+    sb = d2sf(b);
+    return f64_eq_impl(&sa, &sb);
+}
+
+int __nedf2(double a, double b) {
+    return __eqdf2(a, b);
+}
+
+int __ltdf2(double a, double b) {
+    soft_f64 sa, sb;
+    sa = d2sf(a);
+    sb = d2sf(b);
+    return f64_lt_impl(&sa, &sb);
+}
+
+int __ledf2(double a, double b) {
+    int c = __ltdf2(a, b);
+    return (c <= 0) ? 0 : 1;
+}
+
+int __gtdf2(double a, double b) {
+    int c = __ltdf2(a, b);
+    return (c > 0) ? 1 : 0;
+}
+
+int __gedf2(double a, double b) {
+    int c = __ltdf2(a, b);
+    return (c >= 0) ? 0 : -1;
+}
+
+double __floatsidf(int i) {
+    soft_f64 sr;
+    f64_from_int_impl(&sr, i);
+    return sf2d(sr);
+}
+
+double __floatdidf(long l) {
+    return __floatsidf((int)l);
+}
+
+double __floatunsidf(unsigned int u) {
+    soft_f64 sr;
+    f64_from_uint_impl(&sr, u);
+    return sf2d(sr);
+}
+
+double __floatundidf(unsigned long u) {
+    return __floatunsidf((unsigned int)u);
+}
+
+int __fixdfsi(double a) {
+    soft_f64 sa;
+    sa = d2sf(a);
+    return f64_to_int_impl(&sa);
+}
+
+long __fixdfdi(double a) {
+    return (long)__fixdfsi(a);
+}
+
+unsigned int __fixunsdfsi(double a) {
+    soft_f64 sa;
+    sa = d2sf(a);
+    return f64_to_uint_impl(&sa);
+}
+
+unsigned long __fixunsdfdi(double a) {
+    return (unsigned long)__fixunsdfsi(a);
+}
+
+double __extendsfdf2(float a) {
+    soft_f64 sr;
+    unsigned int u;
+    memcpy(&u, &a, sizeof(float));
+    f64_from_f32_impl(&sr, u);
+    return sf2d(sr);
+}
+
+float __truncdfsf2(double a) {
+    soft_f64 sa;
+    unsigned int u;
+    float f;
+    sa = d2sf(a);
+    u = f64_to_f32_impl(&sa);
+    memcpy(&f, &u, sizeof(float));
+    return f;
+}
+
+int soft_strto_f64(const char *str, void *out) {
+    parse_dec_f64(str, (soft_f64 *)out);
+    return 0;
+}
+
+#elif defined(TARGET_I386) || defined(__i386__) || defined(TARGET_32BIT)
 
 void *__adddf3(void *res, const void *a, const void *b) {
     f64_add_impl((soft_f64 *)res, (const soft_f64 *)a, (const soft_f64 *)b);
@@ -1449,7 +1599,50 @@ void *__extendsftf2(void *res, unsigned int a) {
     return r;
 }
 
-#if defined(TARGET_I386) || defined(__i386__) || defined(TARGET_RISCV32) || defined(__riscv) || defined(TARGET_32BIT)
+#if defined(TARGET_RISCV32) || defined(__riscv)
+
+void *__extenddftf2(void *res, const void *a_ptr) {
+    soft_f128 *r = (soft_f128 *)res;
+    const soft_f64 *u_a = (const soft_f64 *)a_ptr;
+    soft_f64 mant;
+    soft_f128 m128;
+    int sign, exp;
+    f64_unpack(u_a, &sign, &exp, &mant);
+    if ((mant.lo | mant.hi) == 0 && exp == 0) {
+        u128_zero(r);
+        if (sign) r->w[3] |= 0x80000000U;
+        return r;
+    }
+    exp = exp - F64_BIAS + F128_BIAS;
+    u128_zero(&m128);
+    m128.w[0] = mant.lo;
+    m128.w[1] = mant.hi;
+    u128_shl(&m128, &m128, 112 - 52);
+    f128_pack(r, sign, exp, &m128);
+    return r;
+}
+
+double __trunctfdf2(const void *a_ptr) {
+    const soft_f128 *a = (const soft_f128 *)a_ptr;
+    soft_f64 r;
+    soft_f64 m64;
+    soft_f128 mant;
+    int sign, exp;
+    f128_unpack(a, &sign, &exp, &mant);
+    if (u128_is_zero(&mant) && exp == 0) {
+        r.lo = 0;
+        r.hi = sign ? 0x80000000U : 0;
+    } else {
+        exp = exp - F128_BIAS + F64_BIAS;
+        u128_shr(&mant, &mant, 112 - 52);
+        m64.lo = mant.w[0];
+        m64.hi = mant.w[1];
+        f64_pack(&r, sign, exp, &m64);
+    }
+    return sf2d(r);
+}
+
+#elif defined(TARGET_I386) || defined(__i386__) || defined(TARGET_32BIT)
 
 void *__extenddftf2(void *res, const void *a_ptr) {
     soft_f128 *r = (soft_f128 *)res;

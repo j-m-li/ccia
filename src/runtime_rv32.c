@@ -1009,22 +1009,22 @@ int __unorddf2(double a, double b) {
     return (is_nan(a) || is_nan(b)) ? 1 : 0;
 }
 
-void *__adddf3(void *res, const void *a, const void *b);
-void *__subdf3(void *res, const void *a, const void *b);
-void *__muldf3(void *res, const void *a, const void *b);
-void *__divdf3(void *res, const void *a, const void *b);
-int __ltdf2(const void *a, const void *b);
-int __fixdfsi(const void *a);
-void *__floatsidf(void *res, int i);
+double __adddf3(double a, double b);
+double __subdf3(double a, double b);
+double __muldf3(double a, double b);
+double __divdf3(double a, double b);
+int __ltdf2(double a, double b);
+int __fixdfsi(double a);
+double __floatsidf(int i);
 
-static double rt_adddf(double a, double b) { double res; __adddf3(&res, &a, &b); return res; }
-static double rt_subdf(double a, double b) { double res; __subdf3(&res, &a, &b); return res; }
-static double rt_muldf(double a, double b) { double res; __muldf3(&res, &a, &b); return res; }
-static double rt_divdf(double a, double b) { double res; __divdf3(&res, &a, &b); return res; }
-static int rt_ltdf(double a, double b) { return __ltdf2(&a, &b) < 0; }
-static int rt_gedf(double a, double b) { return __ltdf2(&a, &b) >= 0; }
-static int rt_df2si(double a) { return __fixdfsi(&a); }
-static double rt_si2df(int i) { double res; __floatsidf(&res, i); return res; }
+static double rt_adddf(double a, double b) { return __adddf3(a, b); }
+static double rt_subdf(double a, double b) { return __subdf3(a, b); }
+static double rt_muldf(double a, double b) { return __muldf3(a, b); }
+static double rt_divdf(double a, double b) { return __divdf3(a, b); }
+static int rt_ltdf(double a, double b) { return __ltdf2(a, b) < 0; }
+static int rt_gedf(double a, double b) { return __ltdf2(a, b) >= 0; }
+static int rt_df2si(double a) { return __fixdfsi(a); }
+static double rt_si2df(int i) { return __floatsidf(i); }
 
 static void dtoa_f(char *buf, int max_len, double val, int precision, int hash_flag) {
     int i;

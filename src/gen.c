@@ -274,7 +274,7 @@ static int get_ldouble_temp(CodeGen *gen) {
 }
 
 static void gen_cast_to(CodeGen *gen, Type *from, Type *to) {
-    if (!from || !to || type_equal(from, to)) return;
+    if (!from || !to || type_equal(from, to) || to->kind == TYPE_VOID) return;
 
     if (to->kind == TYPE_FLOAT) {
         if (from->kind == TYPE_DOUBLE) {

@@ -60,7 +60,37 @@ unsigned long __fixunssfdi(unsigned int a);
 /* Float64 (Double Precision) API                                            */
 /* ========================================================================= */
 
-#if defined(TARGET_I386) || defined(__i386__) || defined(TARGET_RISCV32) || defined(__riscv) || defined(__riscv__) || defined(TARGET_32BIT)
+#if defined(TARGET_RISCV32) || defined(__riscv) || defined(__riscv__)
+double __adddf3(double a, double b);
+double __subdf3(double a, double b);
+double __muldf3(double a, double b);
+double __divdf3(double a, double b);
+double __negdf2(double a);
+
+int __eqdf2(double a, double b);
+int __nedf2(double a, double b);
+int __ltdf2(double a, double b);
+int __ledf2(double a, double b);
+int __gtdf2(double a, double b);
+int __gedf2(double a, double b);
+
+double __floatsidf(int i);
+double __floatdidf(long l);
+double __floatunsidf(unsigned int u);
+double __floatundidf(unsigned long u);
+
+int __fixdfsi(double a);
+long __fixdfdi(double a);
+unsigned int __fixunsdfsi(double a);
+unsigned long __fixunsdfdi(double a);
+
+double __extendsfdf2(float a);
+float __truncdfsf2(double a);
+void *__extenddftf2(void *res, const void *a);
+double __trunctfdf2(const void *a);
+
+int soft_strto_f64(const char *str, void *out);
+#elif defined(TARGET_I386) || defined(__i386__) || defined(TARGET_32BIT)
 void *__adddf3(void *res, const void *a, const void *b);
 void *__subdf3(void *res, const void *a, const void *b);
 void *__muldf3(void *res, const void *a, const void *b);
