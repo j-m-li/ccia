@@ -53,7 +53,7 @@ STAGE3_I386_TARGET = ccia-i386_stage3
 
 # RISC-V 32-bit (RV32I) Sources & Target
 CLANG ?= clang
-QEMU_RV32 ?= $(shell command -v qemu-riscv32 2>/dev/null || echo qemu-riscv32-static)
+QEMU_RV32 ?= $(shell command -v qemu-riscv32-static 2>/dev/null || command -v qemu-riscv32 2>/dev/null || echo qemu-riscv32)
 SRCS_RV32I = src/main.c src/util.c src/lex.c src/cpp.c src/type.c src/sym.c src/parse.c src/gen_riscv32.c src/softfloat.c
 OBJS_RV32I = $(SRCS_RV32I:.c=.rv32i_host.o)
 TARGET_RV32I = ccia-rv32i
