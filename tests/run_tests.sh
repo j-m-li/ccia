@@ -68,7 +68,6 @@ for t in "${TESTS[@]}"; do
         cat "$DIR/$t.out"
         exit 1
     fi
-        cat "$DIR/$t.out"
     
     echo "OK"
     PASSED=$((PASSED + 1))
