@@ -99,7 +99,7 @@ static void test_float128(void) {
     int i;
 */
     printf("Testing long double (128-bit quad)...\n");
-/*
+#if 0
     c = a + b; /* 125.25L */
     d = a - b; /* 75.25L */
     e = a * 2.0L; /* 200.5L */
@@ -126,7 +126,7 @@ static void test_float128(void) {
     ASSERT(i == 100, "long double to int cast");
     b = (long double)i;
     ASSERT(b == 100.0L, "int to long double cast");
-*/
+#endif
 }
 
 static void test_cross_conversions(void) {
