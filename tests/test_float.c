@@ -184,8 +184,8 @@ int main(void) {
     test_float64();
 /*    test_float128();
    test_cross_conversions();
-    test_mixed_arithmetic();
-*/
+*/    test_mixed_arithmetic();
+
     printf("All Floating Point Tests PASSED!\n");
     return 0;
 }
