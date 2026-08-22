@@ -1109,21 +1109,21 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         int is_ptr_lhs, is_ptr_rhs, is_unsigned;
 
         if (common_type && type_is_floating(common_type)) {
-            gen_expr(gen, lhs);
-            if (!type_equal(lhs->type, common_type)) {
-                gen_cast_to(gen, lhs->type, common_type);
-            }
-            emit(gen, "    addi sp, sp, -16");
-            emit(gen, "    sw a0, 0(sp)");
-            gen_expr(gen, rhs);
-            if (!type_equal(rhs->type, common_type)) {
-                gen_cast_to(gen, rhs->type, common_type);
-            }
-            emit(gen, "    mv a1, a0"); /* rhs in a1 */
-            emit(gen, "    lw a0, 0(sp)"); /* lhs in a0 */
-            emit(gen, "    addi sp, sp, 16");
-
             if (common_type->kind == TYPE_FLOAT) {
+                gen_expr(gen, lhs);
+                if (!type_equal(lhs->type, common_type)) {
+                    gen_cast_to(gen, lhs->type, common_type);
+                }
+                emit(gen, "    addi sp, sp, -16");
+                emit(gen, "    sw a0, 0(sp)");
+                gen_expr(gen, rhs);
+                if (!type_equal(rhs->type, common_type)) {
+                    gen_cast_to(gen, rhs->type, common_type);
+                }
+                emit(gen, "    mv a1, a0"); /* rhs in a1 */
+                emit(gen, "    lw a0, 0(sp)"); /* lhs in a0 */
+                emit(gen, "    addi sp, sp, 16");
+
                 switch (node->kind) {
                 case AST_ADD: emit(gen, "    call __addsf3"); break;
                 case AST_SUB: emit(gen, "    call __subsf3"); break;
@@ -1157,92 +1157,130 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 default: break;
                 }
             } else if (common_type->kind == TYPE_DOUBLE) {
-                switch (node->kind) {
-                case AST_ADD:
-                case AST_SUB:
-                case AST_MUL:
-                case AST_DIV: {
+                gen_expr(gen, lhs);
+                if (!type_equal(lhs->type, common_type)) {
+                    gen_cast_to(gen, lhs->type, common_type);
+                }
+                /* Push the FULL 8-BYTE VALUE of lhs to the stack so rhs cannot clobber it */
+                emit(gen, "    addi sp, sp, -16");
+                emit(gen, "    lw t0, 0(a0)");
+                emit(gen, "    lw t1, 4(a0)");
+                emit(gen, "    sw t0, 0(sp)");
+                emit(gen, "    sw t1, 4(sp)");
+                gen_expr(gen, rhs);
+                if (!type_equal(rhs->type, common_type)) {
+                    gen_cast_to(gen, rhs->type, common_type);
+                }
+                /* rhs address is in a0, lhs address is at 0(sp) */
+                emit(gen, "    mv a2, a0");      /* rhs */
+                emit(gen, "    mv a1, sp");      /* lhs */
+                if (node->kind == AST_EQ || node->kind == AST_NE || node->kind == AST_LT ||
+                    node->kind == AST_LE || node->kind == AST_GT || node->kind == AST_GE) {
+                    emit(gen, "    mv a0, a1");  /* lhs in a0 */
+                    emit(gen, "    mv a1, a2");  /* rhs in a1 */
+                    switch (node->kind) {
+                    case AST_EQ:
+                        emit(gen, "    call __eqdf2");
+                        emit(gen, "    seqz a0, a0");
+                        break;
+                    case AST_NE:
+                        emit(gen, "    call __nedf2");
+                        emit(gen, "    snez a0, a0");
+                        break;
+                    case AST_LT:
+                        emit(gen, "    call __ltdf2");
+                        emit(gen, "    slti a0, a0, 0");
+                        break;
+                    case AST_LE:
+                        emit(gen, "    call __ledf2");
+                        emit(gen, "    slti a0, a0, 1");
+                        break;
+                    case AST_GT:
+                        emit(gen, "    call __gtdf2");
+                        emit(gen, "    slt a0, zero, a0");
+                        break;
+                    case AST_GE:
+                        emit(gen, "    call __gedf2");
+                        emit(gen, "    slt a0, a0, zero");
+                        emit(gen, "    xori a0, a0, 1");
+                        break;
+                    default: break;
+                    }
+                    emit(gen, "    addi sp, sp, 16");
+                } else {
                     int off = get_scratch_temp(gen);
-                    emit(gen, "    mv a2, a1");
-                    emit(gen, "    mv a1, a0");
                     emit_addi(gen, "a0", "s0", off);
                     if (node->kind == AST_ADD) emit(gen, "    call __adddf3");
                     else if (node->kind == AST_SUB) emit(gen, "    call __subdf3");
                     else if (node->kind == AST_MUL) emit(gen, "    call __muldf3");
                     else if (node->kind == AST_DIV) emit(gen, "    call __divdf3");
+                    emit(gen, "    addi sp, sp, 16");
                     emit_addi(gen, "a0", "s0", off);
-                    break;
-                }
-                case AST_EQ:
-                    emit(gen, "    call __eqdf2");
-                    emit(gen, "    seqz a0, a0");
-                    break;
-                case AST_NE:
-                    emit(gen, "    call __nedf2");
-                    emit(gen, "    snez a0, a0");
-                    break;
-                case AST_LT:
-                    emit(gen, "    call __ltdf2");
-                    emit(gen, "    slti a0, a0, 0");
-                    break;
-                case AST_LE:
-                    emit(gen, "    call __ledf2");
-                    emit(gen, "    slti a0, a0, 1");
-                    break;
-                case AST_GT:
-                    emit(gen, "    call __gtdf2");
-                    emit(gen, "    slt a0, zero, a0");
-                    break;
-                case AST_GE:
-                    emit(gen, "    call __gedf2");
-                    emit(gen, "    slt a0, a0, zero");
-                    emit(gen, "    xori a0, a0, 1");
-                    break;
-                default: break;
                 }
             } else if (common_type->kind == TYPE_LDOUBLE) {
-                switch (node->kind) {
-                case AST_ADD:
-                case AST_SUB:
-                case AST_MUL:
-                case AST_DIV: {
+                gen_expr(gen, lhs);
+                if (!type_equal(lhs->type, common_type)) {
+                    gen_cast_to(gen, lhs->type, common_type);
+                }
+                /* Push the FULL 16-BYTE VALUE of lhs to the stack */
+                emit(gen, "    addi sp, sp, -16");
+                emit(gen, "    lw t0, 0(a0)");
+                emit(gen, "    lw t1, 4(a0)");
+                emit(gen, "    sw t0, 0(sp)");
+                emit(gen, "    sw t1, 4(sp)");
+                emit(gen, "    lw t0, 8(a0)");
+                emit(gen, "    lw t1, 12(a0)");
+                emit(gen, "    sw t0, 8(sp)");
+                emit(gen, "    sw t1, 12(sp)");
+                gen_expr(gen, rhs);
+                if (!type_equal(rhs->type, common_type)) {
+                    gen_cast_to(gen, rhs->type, common_type);
+                }
+                /* rhs address is in a0, lhs address is at 0(sp) */
+                emit(gen, "    mv a2, a0");      /* rhs */
+                emit(gen, "    mv a1, sp");      /* lhs */
+                if (node->kind == AST_EQ || node->kind == AST_NE || node->kind == AST_LT ||
+                    node->kind == AST_LE || node->kind == AST_GT || node->kind == AST_GE) {
+                    emit(gen, "    mv a0, a1");  /* lhs in a0 */
+                    emit(gen, "    mv a1, a2");  /* rhs in a1 */
+                    switch (node->kind) {
+                    case AST_EQ:
+                        emit(gen, "    call __eqtf2");
+                        emit(gen, "    seqz a0, a0");
+                        break;
+                    case AST_NE:
+                        emit(gen, "    call __netf2");
+                        emit(gen, "    snez a0, a0");
+                        break;
+                    case AST_LT:
+                        emit(gen, "    call __lttf2");
+                        emit(gen, "    slti a0, a0, 0");
+                        break;
+                    case AST_LE:
+                        emit(gen, "    call __letf2");
+                        emit(gen, "    slti a0, a0, 1");
+                        break;
+                    case AST_GT:
+                        emit(gen, "    call __gttf2");
+                        emit(gen, "    slt a0, zero, a0");
+                        break;
+                    case AST_GE:
+                        emit(gen, "    call __getf2");
+                        emit(gen, "    slt a0, a0, zero");
+                        emit(gen, "    xori a0, a0, 1");
+                        break;
+                    default: break;
+                    }
+                    emit(gen, "    addi sp, sp, 16");
+                } else {
                     int off = get_scratch_temp(gen);
-                    emit(gen, "    mv a2, a1");
-                    emit(gen, "    mv a1, a0");
                     emit_addi(gen, "a0", "s0", off);
                     if (node->kind == AST_ADD) emit(gen, "    call __addtf3");
                     else if (node->kind == AST_SUB) emit(gen, "    call __subtf3");
                     else if (node->kind == AST_MUL) emit(gen, "    call __multf3");
                     else if (node->kind == AST_DIV) emit(gen, "    call __divtf3");
+                    emit(gen, "    addi sp, sp, 16");
                     emit_addi(gen, "a0", "s0", off);
-                    break;
-                }
-                case AST_EQ:
-                    emit(gen, "    call __eqtf2");
-                    emit(gen, "    seqz a0, a0");
-                    break;
-                case AST_NE:
-                    emit(gen, "    call __netf2");
-                    emit(gen, "    snez a0, a0");
-                    break;
-                case AST_LT:
-                    emit(gen, "    call __lttf2");
-                    emit(gen, "    slti a0, a0, 0");
-                    break;
-                case AST_LE:
-                    emit(gen, "    call __letf2");
-                    emit(gen, "    slti a0, a0, 1");
-                    break;
-                case AST_GT:
-                    emit(gen, "    call __gttf2");
-                    emit(gen, "    slt a0, zero, a0");
-                    break;
-                case AST_GE:
-                    emit(gen, "    call __getf2");
-                    emit(gen, "    slt a0, a0, zero");
-                    emit(gen, "    xori a0, a0, 1");
-                    break;
-                default: break;
                 }
             }
             return;
