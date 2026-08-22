@@ -63,12 +63,12 @@ static void test_float64(void) {
     long l;
 
     printf("Testing double (64-bit)...\n");
-#if 0
+    
     c = a + b; /* 16.5 */
     d = a - b; /* 8.5 */
     e = a * b; /* 50.0 */
     f = a / b; /* 3.125 */
-
+#if 0		
     ASSERT(c > 16.49 && c < 16.51, "double add");
     ASSERT(d > 8.49 && d < 8.51, "double sub");
     ASSERT(e > 49.99 && e < 50.01, "double mul");
