@@ -1886,15 +1886,20 @@ static void gen_rodata(CodeGen *gen, Vector *strings, Vector *floats) {
     if (floats) {
         for (i = 0; i < floats->size; i++) {
             AstNode *f = (AstNode *)vec_get(floats, i);
-            emit(gen, "%s:", f->u.float_val.label);
             if (f->type == type_float) {
+                emit(gen, "    .balign 4");
+                emit(gen, "%s:", f->u.float_val.label);
                 emit(gen, "    .long %u", f->u.float_val.u128_words[0]);
             } else if (f->type == type_ldouble) {
+                emit(gen, "    .balign 16");
+                emit(gen, "%s:", f->u.float_val.label);
                 emit(gen, "    .long %u", f->u.float_val.u128_words[0]);
                 emit(gen, "    .long %u", f->u.float_val.u128_words[1]);
                 emit(gen, "    .long %u", f->u.float_val.u128_words[2]);
                 emit(gen, "    .long %u", f->u.float_val.u128_words[3]);
             } else {
+                emit(gen, "    .balign 8");
+                emit(gen, "%s:", f->u.float_val.label);
                 emit(gen, "    .long %u", f->u.float_val.u128_words[0]);
                 emit(gen, "    .long %u", f->u.float_val.u128_words[1]);
             }
