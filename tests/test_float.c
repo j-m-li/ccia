@@ -62,7 +62,7 @@ static void test_float64(void) {
     double c, d, e, f;
     long l;
 
-    printf("Testing double (64-bit)...\n");
+    printf("Testing double (64-bit)... \n");
 
     c = a + b; /* 16.5 */
     d = a - b; /* 8.5 */
