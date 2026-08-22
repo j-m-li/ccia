@@ -150,10 +150,10 @@ $(TARGET_RV32I): $(OBJS_RV32I) $(RUNTIME_RV32I_OBJ) $(SOFTFLOAT_RV32I_OBJ)
 	$(CC) $(CFLAGS) -DTARGET_RISCV32 -c -o $@ $<
 
 $(RUNTIME_RV32I_OBJ): src/runtime_rv32.c
-	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O0 -c -o $@ $<
+	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -ffreestanding -fno-builtin -Iinclude -O0 -c -o $@ $<
 
 $(SOFTFLOAT_RV32I_OBJ): src/softfloat.c
-	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O0 -c -o $@ $<
+	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -ffreestanding -fno-builtin -Iinclude -O0 -c -o $@ $<
 
 INCLUDES_RV32I = -Iinclude/riscv32 -Iinclude
 

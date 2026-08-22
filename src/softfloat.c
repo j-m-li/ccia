@@ -822,65 +822,63 @@ static void parse_dec_f64(const char *str, soft_f64 *out) {
 
 #if defined(TARGET_RISCV32) || defined(__riscv)
 
-static soft_f64 d2sf(double d) {
-    f64_cast c;
-    soft_f64 s;
-    c.d = d;
-    s.lo = c.u.lo;
-    s.hi = c.u.hi;
-    return s;
-}
-
-static double sf2d(soft_f64 s) {
-    f64_cast c;
-    c.u.lo = s.lo;
-    c.u.hi = s.hi;
-    return c.d;
-}
-
 double __adddf3(double a, double b) {
+    f64_cast ca, cb, cr;
     soft_f64 sa, sb, sr;
-    sa = d2sf(a);
-    sb = d2sf(b);
+    ca.d = a; cb.d = b;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
+    sb.lo = cb.u.lo; sb.hi = cb.u.hi;
     f64_add_impl(&sr, &sa, &sb);
-    return sf2d(sr);
+    cr.u.lo = sr.lo; cr.u.hi = sr.hi;
+    return cr.d;
 }
 
 double __subdf3(double a, double b) {
+    f64_cast ca, cb, cr;
     soft_f64 sa, sb, sr;
-    sa = d2sf(a);
-    sb = d2sf(b);
+    ca.d = a; cb.d = b;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
+    sb.lo = cb.u.lo; sb.hi = cb.u.hi;
     f64_sub_impl(&sr, &sa, &sb);
-    return sf2d(sr);
+    cr.u.lo = sr.lo; cr.u.hi = sr.hi;
+    return cr.d;
 }
 
 double __muldf3(double a, double b) {
+    f64_cast ca, cb, cr;
     soft_f64 sa, sb, sr;
-    sa = d2sf(a);
-    sb = d2sf(b);
+    ca.d = a; cb.d = b;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
+    sb.lo = cb.u.lo; sb.hi = cb.u.hi;
     f64_mul_impl(&sr, &sa, &sb);
-    return sf2d(sr);
+    cr.u.lo = sr.lo; cr.u.hi = sr.hi;
+    return cr.d;
 }
 
 double __divdf3(double a, double b) {
+    f64_cast ca, cb, cr;
     soft_f64 sa, sb, sr;
-    sa = d2sf(a);
-    sb = d2sf(b);
+    ca.d = a; cb.d = b;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
+    sb.lo = cb.u.lo; sb.hi = cb.u.hi;
     f64_div_impl(&sr, &sa, &sb);
-    return sf2d(sr);
+    cr.u.lo = sr.lo; cr.u.hi = sr.hi;
+    return cr.d;
 }
 
 double __negdf2(double a) {
-    soft_f64 sa;
-    sa = d2sf(a);
-    sa.hi ^= 0x80000000U;
-    return sf2d(sa);
+    f64_cast ca;
+    ca.d = a;
+    ca.u.hi ^= 0x80000000U;
+    return ca.d;
 }
 
 int __eqdf2(double a, double b) {
+    f64_cast ca, cb;
     soft_f64 sa, sb;
-    sa = d2sf(a);
-    sb = d2sf(b);
+    ca.d = a; cb.d = b;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
+    sb.lo = cb.u.lo; sb.hi = cb.u.hi;
     return f64_eq_impl(&sa, &sb);
 }
 
@@ -889,9 +887,11 @@ int __nedf2(double a, double b) {
 }
 
 int __ltdf2(double a, double b) {
+    f64_cast ca, cb;
     soft_f64 sa, sb;
-    sa = d2sf(a);
-    sb = d2sf(b);
+    ca.d = a; cb.d = b;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
+    sb.lo = cb.u.lo; sb.hi = cb.u.hi;
     return f64_lt_impl(&sa, &sb);
 }
 
@@ -912,8 +912,10 @@ int __gedf2(double a, double b) {
 
 double __floatsidf(int i) {
     soft_f64 sr;
+    f64_cast cr;
     f64_from_int_impl(&sr, i);
-    return sf2d(sr);
+    cr.u.lo = sr.lo; cr.u.hi = sr.hi;
+    return cr.d;
 }
 
 double __floatdidf(long l) {
@@ -922,8 +924,10 @@ double __floatdidf(long l) {
 
 double __floatunsidf(unsigned int u) {
     soft_f64 sr;
+    f64_cast cr;
     f64_from_uint_impl(&sr, u);
-    return sf2d(sr);
+    cr.u.lo = sr.lo; cr.u.hi = sr.hi;
+    return cr.d;
 }
 
 double __floatundidf(unsigned long u) {
@@ -931,8 +935,10 @@ double __floatundidf(unsigned long u) {
 }
 
 int __fixdfsi(double a) {
+    f64_cast ca;
     soft_f64 sa;
-    sa = d2sf(a);
+    ca.d = a;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
     return f64_to_int_impl(&sa);
 }
 
@@ -941,8 +947,10 @@ long __fixdfdi(double a) {
 }
 
 unsigned int __fixunsdfsi(double a) {
+    f64_cast ca;
     soft_f64 sa;
-    sa = d2sf(a);
+    ca.d = a;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
     return f64_to_uint_impl(&sa);
 }
 
@@ -953,15 +961,19 @@ unsigned long __fixunsdfdi(double a) {
 double __extendsfdf2(float a) {
     soft_f64 sr;
     f32_cast ca;
+    f64_cast cr;
     ca.f = a;
     f64_from_f32_impl(&sr, ca.u);
-    return sf2d(sr);
+    cr.u.lo = sr.lo; cr.u.hi = sr.hi;
+    return cr.d;
 }
 
 float __truncdfsf2(double a) {
+    f64_cast ca;
     soft_f64 sa;
     f32_cast cr;
-    sa = d2sf(a);
+    ca.d = a;
+    sa.lo = ca.u.lo; sa.hi = ca.u.hi;
     cr.u = f64_to_f32_impl(&sa);
     return cr.f;
 }
@@ -1629,6 +1641,7 @@ double __trunctfdf2(const void *a_ptr) {
     soft_f64 r;
     soft_f64 m64;
     soft_f128 mant;
+    f64_cast cr;
     int sign, exp;
     f128_unpack(a, &sign, &exp, &mant);
     if (u128_is_zero(&mant) && exp == 0) {
@@ -1641,7 +1654,8 @@ double __trunctfdf2(const void *a_ptr) {
         m64.hi = mant.w[1];
         f64_pack(&r, sign, exp, &m64);
     }
-    return sf2d(r);
+    cr.u.lo = r.lo; cr.u.hi = r.hi;
+    return cr.d;
 }
 
 #elif defined(TARGET_I386) || defined(__i386__) || defined(TARGET_32BIT)

@@ -66,62 +66,40 @@ static void test_float64(void) {
 
     printf("Testing double (64-bit)...\n");
     c = a + b; /* 16.5 */
-    printf("step 1a: c = a + b done\n");
     d = a - b; /* 8.5 */
-    printf("step 1b: d = a - b done\n");
     e = a * b; /* 50.0 */
-    printf("step 1c: e = a * b done\n");
     f = a / b; /* 3.125 */
-    printf("step 1d: f = a / b done\n");
     ASSERT(c > 16.49 && c < 16.51, "double add");
-    printf("step 2: add assert done\n");
     ASSERT(d > 8.49 && d < 8.51, "double sub");
-    printf("step 3: sub assert done\n");
     ASSERT(e > 49.99 && e < 50.01, "double mul");
-    printf("step 4: mul assert done\n");
     ASSERT(f > 3.124 && f < 3.126, "double div");
-    printf("step 5: div assert done\n");
 
     /* Additional addition cases */
     ASSERT((1.0 + 2.0) > 2.99 && (1.0 + 2.0) < 3.01, "double 1.0 + 2.0");
-    printf("step 6: 1.0+2.0 done\n");
     ASSERT((a + 0.0) == 12.5, "double + 0.0");
-    printf("step 7: a+0.0 done\n");
     ASSERT((0.0 + a) == 12.5, "0.0 + double");
-    printf("step 8: 0.0+a done\n");
     ASSERT((a + (-4.0)) == 8.5, "double + (-double)");
-    printf("step 9: a+(-4.0) done\n");
     ASSERT(((-12.5) + 4.0) == -8.5, "(-double) + double");
-    printf("step 10: -12.5+4.0 done\n");
     ASSERT(((-12.5) + (-4.0)) == -16.5, "(-double) + (-double)");
-    printf("step 11: -12.5+-4.0 done\n");
     ASSERT(((a + b) + 1.0) == 17.5, "double chained addition");
-    printf("step 12: chained add done\n");
 
     /* Increment / Decrement */
     inc_test = 3.5;
     inc_res = ++inc_test;
-    printf("step 13: ++inc_test done\n");
     ASSERT(inc_test == 4.5 && inc_res == 4.5, "double prefix ++");
     inc_res = inc_test++;
-    printf("step 14: inc_test++ done\n");
     ASSERT(inc_test == 5.5 && inc_res == 4.5, "double postfix ++");
     inc_res = --inc_test;
-    printf("step 15: --inc_test done\n");
     ASSERT(inc_test == 4.5 && inc_res == 4.5, "double prefix --");
     inc_res = inc_test--;
-    printf("step 16: inc_test-- done\n");
     ASSERT(inc_test == 3.5 && inc_res == 4.5, "double postfix --");
-    printf("step 17: inc/dec done\n");
 
     /* Compound addition */
     inc_test += 10.0;
-    printf("step 18: += done\n");
     ASSERT(inc_test == 13.5, "double +=");
 
     /* Unary negation */
     ASSERT(-a < 0.0, "double neg");
-    printf("step 19: neg done\n");
 
     /* Comparisons */
     ASSERT(a > b, "double gt");
@@ -130,14 +108,12 @@ static void test_float64(void) {
     ASSERT(b <= 4.0, "double le");
     ASSERT(a == 12.5, "double eq");
     ASSERT(a != b, "double ne");
-    printf("step 20: comparisons done\n");
 
     /* Conversions */
     l = (long)a;
     ASSERT(l == 12, "double to long cast");
     b = (double)l;
     ASSERT(b == 12.0, "long to double cast");
-    printf("step 21: conversions done\n");
 }
 
 static void test_float128(void) {
