@@ -90,6 +90,7 @@ static void test_float64(void) {
     ASSERT(l == 12, "double to long cast");
     b = (double)l;
     ASSERT(b == 12.0, "long to double cast");
+    printf("Testing double PASS...\n");
 }
 
 static void test_float128(void) {
