@@ -4,7 +4,7 @@
 #
 
 CC ?= clang
-CFLAGS ?= -std=c90 -pedantic -Wall -Wextra -O2 -Iinclude
+CFLAGS ?= -std=c90 -pedantic -Wall -Wextra -O0 -Iinclude
 
 # Default system include paths passed via -I options
 SYS_INCLUDES_X86_64 = $(shell for d in \
@@ -150,10 +150,10 @@ $(TARGET_RV32I): $(OBJS_RV32I) $(RUNTIME_RV32I_OBJ) $(SOFTFLOAT_RV32I_OBJ)
 	$(CC) $(CFLAGS) -DTARGET_RISCV32 -c -o $@ $<
 
 $(RUNTIME_RV32I_OBJ): src/runtime_rv32.c
-	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O2 -c -o $@ $<
+	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O0 -c -o $@ $<
 
 $(SOFTFLOAT_RV32I_OBJ): src/softfloat.c
-	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O2 -c -o $@ $<
+	$(CLANG) --target=riscv32-unknown-linux-gnu -march=rv32i -mabi=ilp32 -DTARGET_RISCV32 -Iinclude -O0 -c -o $@ $<
 
 INCLUDES_RV32I = -Iinclude/riscv32 -Iinclude
 
@@ -241,17 +241,17 @@ clean:
 # SQLite Test Suites (x86_64, i386, RV32I)
 test-sqlite-x86_64: $(TARGET_X86_64)
 	@echo "=== Building and Running SQLite 2.8.17 test suite with ccia (x86_64) ==="
-	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_X86_64) -I../../include/riscv32" BCC="clang -g -O2 -ansi" EMU=""
+	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_X86_64) -I../../include/riscv32" BCC="clang -g -O0 -ansi" EMU=""
 	@echo "SUCCESS: SQLite 2.8.17 passed all tests on x86_64!"
 
 test-sqlite-i386: $(TARGET_I386)
 	@echo "=== Building and Running SQLite 2.8.17 test suite with ccia-i386 (i386 32-bit) ==="
-	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_I386) -I../../include/riscv32" BCC="clang -g -O2 -ansi" EMU=""
+	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_I386) -I../../include/riscv32" BCC="clang -g -O0 -ansi" EMU=""
 	@echo "SUCCESS: SQLite 2.8.17 passed all tests on i386!"
 
 test-sqlite-rv32i: $(TARGET_RV32I)
 	@echo "=== Building and Running SQLite 2.8.17 test suite with ccia-rv32i (RISC-V 32-bit RV32I) ==="
-	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_RV32I) -I../../include/riscv32" BCC="clang -g -O2 -ansi" EMU="$(QEMU_RV32)"
+	@cd tests/sqlite && $(MAKE) -f Makefile.linux-gcc clean && $(MAKE) -f Makefile.linux-gcc test TCC="../../$(TARGET_RV32I) -I../../include/riscv32" BCC="clang -g -O0 -ansi" EMU="$(QEMU_RV32)"
 	@echo "SUCCESS: SQLite 2.8.17 passed all tests on RISC-V 32-bit RV32I!"
 
 test-sqlite: test-sqlite-x86_64 test-sqlite-i386 test-sqlite-rv32i
