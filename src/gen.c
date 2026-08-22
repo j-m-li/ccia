@@ -497,6 +497,43 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             if (node->type && node->type->base) step = node->type->base->size;
             gen_lval(gen, op);
             emit(gen, "    pushq %%rax");
+
+            if (node->type && type_is_floating(node->type)) {
+                if (node->type->kind == TYPE_FLOAT) {
+                    gen_load(gen, node->type);
+                    emit(gen, "    movl $0x3f800000, %%esi"); /* 1.0f */
+                    emit(gen, "    movq %%rax, %%rdi");
+                    if (node->kind == AST_PRE_INC) emit_call(gen, "__addsf3");
+                    else emit_call(gen, "__subsf3");
+                    emit(gen, "    popq %%rcx");
+                    gen_store(gen, node->type);
+                } else if (node->type->kind == TYPE_DOUBLE) {
+                    gen_load(gen, node->type);
+                    emit(gen, "    movabsq $0x3ff0000000000000, %%rsi"); /* 1.0 */
+                    emit(gen, "    movq %%rax, %%rdi");
+                    if (node->kind == AST_PRE_INC) emit_call(gen, "__adddf3");
+                    else emit_call(gen, "__subdf3");
+                    emit(gen, "    popq %%rcx");
+                    gen_store(gen, node->type);
+                } else if (node->type->kind == TYPE_LDOUBLE) {
+                    int off_one = get_ldouble_temp(gen);
+                    int off_res = get_ldouble_temp(gen);
+                    emit(gen, "    movl $1, %%esi");
+                    emit(gen, "    leaq -%d(%%rbp), %%rdi", off_one);
+                    emit_call(gen, "__floatsitf");
+                    emit(gen, "    leaq -%d(%%rbp), %%rdx", off_one);
+                    emit(gen, "    movq (%%rsp), %%rsi");
+                    emit(gen, "    leaq -%d(%%rbp), %%rdi", off_res);
+                    if (node->kind == AST_PRE_INC) emit_call(gen, "__addtf3");
+                    else emit_call(gen, "__subtf3");
+                    emit(gen, "    popq %%rcx");
+                    emit(gen, "    leaq -%d(%%rbp), %%rax", off_res);
+                    gen_store(gen, node->type);
+                    emit(gen, "    leaq -%d(%%rbp), %%rax", off_res);
+                }
+                return;
+            }
+
             gen_load(gen, node->type);
             if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             if (node->kind == AST_PRE_INC) {
@@ -521,6 +558,55 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             if (node->type && node->type->base) step = node->type->base->size;
             gen_lval(gen, op);
             emit(gen, "    pushq %%rax");
+
+            if (node->type && type_is_floating(node->type)) {
+                if (node->type->kind == TYPE_FLOAT) {
+                    gen_load(gen, node->type);
+                    emit(gen, "    pushq %%rax"); /* save original value */
+                    emit(gen, "    movl $0x3f800000, %%esi"); /* 1.0f */
+                    emit(gen, "    movq %%rax, %%rdi");
+                    if (node->kind == AST_POST_INC) emit_call(gen, "__addsf3");
+                    else emit_call(gen, "__subsf3");
+                    emit(gen, "    movq 8(%%rsp), %%rcx");
+                    gen_store(gen, node->type);
+                    emit(gen, "    popq %%rax"); /* restore original value */
+                    emit(gen, "    addq $8, %%rsp"); /* pop saved lval */
+                } else if (node->type->kind == TYPE_DOUBLE) {
+                    gen_load(gen, node->type);
+                    emit(gen, "    pushq %%rax"); /* save original value */
+                    emit(gen, "    movabsq $0x3ff0000000000000, %%rsi"); /* 1.0 */
+                    emit(gen, "    movq %%rax, %%rdi");
+                    if (node->kind == AST_POST_INC) emit_call(gen, "__adddf3");
+                    else emit_call(gen, "__subdf3");
+                    emit(gen, "    movq 8(%%rsp), %%rcx");
+                    gen_store(gen, node->type);
+                    emit(gen, "    popq %%rax"); /* restore original value */
+                    emit(gen, "    addq $8, %%rsp"); /* pop saved lval */
+                } else if (node->type->kind == TYPE_LDOUBLE) {
+                    int off_orig = get_ldouble_temp(gen);
+                    int off_one = get_ldouble_temp(gen);
+                    int off_res = get_ldouble_temp(gen);
+                    /* Save original value */
+                    emit(gen, "    movq (%%rsp), %%rax");
+                    emit(gen, "    leaq -%d(%%rbp), %%rcx", off_orig);
+                    gen_store(gen, node->type);
+                    /* Prepare 1.0 */
+                    emit(gen, "    movl $1, %%esi");
+                    emit(gen, "    leaq -%d(%%rbp), %%rdi", off_one);
+                    emit_call(gen, "__floatsitf");
+                    emit(gen, "    leaq -%d(%%rbp), %%rdx", off_one);
+                    emit(gen, "    movq (%%rsp), %%rsi");
+                    emit(gen, "    leaq -%d(%%rbp), %%rdi", off_res);
+                    if (node->kind == AST_POST_INC) emit_call(gen, "__addtf3");
+                    else emit_call(gen, "__subtf3");
+                    emit(gen, "    popq %%rcx");
+                    emit(gen, "    leaq -%d(%%rbp), %%rax", off_res);
+                    gen_store(gen, node->type);
+                    emit(gen, "    leaq -%d(%%rbp), %%rax", off_orig);
+                }
+                return;
+            }
+
             gen_load(gen, node->type);
             if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             emit(gen, "    pushq %%rax"); /* Save original value */

@@ -457,6 +457,60 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             if (node->type && node->type->base) step = node->type->base->size;
             gen_lval(gen, op);
             emit(gen, "    pushl %%eax");
+
+            if (node->type && type_is_floating(node->type)) {
+                if (node->type->kind == TYPE_FLOAT) {
+                    gen_load(gen, node->type);
+                    emit(gen, "    pushl $1065353216"); /* 0x3f800000 = 1.0f */
+                    emit(gen, "    pushl %%eax");
+                    if (node->kind == AST_PRE_INC) emit(gen, "    call __addsf3");
+                    else emit(gen, "    call __subsf3");
+                    emit(gen, "    addl $8, %%esp");
+                    emit(gen, "    popl %%ecx");
+                    gen_store(gen, node->type);
+                } else if (node->type->kind == TYPE_DOUBLE) {
+                    int off_one = get_scratch_temp(gen);
+                    int off_res = get_scratch_temp(gen);
+                    emit(gen, "    movl $0, -%d(%%ebp)", off_one);
+                    emit(gen, "    movl $1072693248, -%d(%%ebp)", off_one - 4);
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_one);
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    movl 4(%%esp), %%eax"); /* lval address */
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    emit(gen, "    pushl %%eax");
+                    if (node->kind == AST_PRE_INC) emit(gen, "    call __adddf3");
+                    else emit(gen, "    call __subdf3");
+                    emit(gen, "    addl $12, %%esp");
+                    emit(gen, "    popl %%ecx");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    gen_store(gen, node->type);
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                } else if (node->type->kind == TYPE_LDOUBLE) {
+                    int off_one = get_scratch_temp(gen);
+                    int off_res = get_scratch_temp(gen);
+                    emit(gen, "    pushl $1");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_one);
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    call __floatsitf");
+                    emit(gen, "    addl $8, %%esp");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_one);
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    movl 4(%%esp), %%eax"); /* lval address */
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    emit(gen, "    pushl %%eax");
+                    if (node->kind == AST_PRE_INC) emit(gen, "    call __addtf3");
+                    else emit(gen, "    call __subtf3");
+                    emit(gen, "    addl $12, %%esp");
+                    emit(gen, "    popl %%ecx");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    gen_store(gen, node->type);
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                }
+                return;
+            }
+
             gen_load(gen, node->type);
             if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             if (node->kind == AST_PRE_INC) {
@@ -481,6 +535,75 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             if (node->type && node->type->base) step = node->type->base->size;
             gen_lval(gen, op);
             emit(gen, "    pushl %%eax");
+
+            if (node->type && type_is_floating(node->type)) {
+                if (node->type->kind == TYPE_FLOAT) {
+                    gen_load(gen, node->type);
+                    emit(gen, "    pushl %%eax"); /* save original value */
+                    emit(gen, "    pushl $1065353216"); /* 1.0f */
+                    emit(gen, "    pushl %%eax");
+                    if (node->kind == AST_POST_INC) emit(gen, "    call __addsf3");
+                    else emit(gen, "    call __subsf3");
+                    emit(gen, "    addl $8, %%esp");
+                    emit(gen, "    movl 4(%%esp), %%ecx"); /* lval address */
+                    gen_store(gen, node->type);
+                    emit(gen, "    popl %%eax"); /* restore original value */
+                    emit(gen, "    addl $4, %%esp"); /* pop saved lval */
+                } else if (node->type->kind == TYPE_DOUBLE) {
+                    int off_orig = get_scratch_temp(gen);
+                    int off_one = get_scratch_temp(gen);
+                    int off_res = get_scratch_temp(gen);
+                    /* Save original value */
+                    emit(gen, "    movl (%%esp), %%eax");
+                    emit(gen, "    leal -%d(%%ebp), %%ecx", off_orig);
+                    gen_store(gen, node->type);
+                    /* Prepare 1.0 */
+                    emit(gen, "    movl $0, -%d(%%ebp)", off_one);
+                    emit(gen, "    movl $1072693248, -%d(%%ebp)", off_one - 4);
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_one);
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    movl 4(%%esp), %%eax"); /* lval address */
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    emit(gen, "    pushl %%eax");
+                    if (node->kind == AST_POST_INC) emit(gen, "    call __adddf3");
+                    else emit(gen, "    call __subdf3");
+                    emit(gen, "    addl $12, %%esp");
+                    emit(gen, "    popl %%ecx"); /* lval address */
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    gen_store(gen, node->type);
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_orig);
+                } else if (node->type->kind == TYPE_LDOUBLE) {
+                    int off_orig = get_scratch_temp(gen);
+                    int off_one = get_scratch_temp(gen);
+                    int off_res = get_scratch_temp(gen);
+                    /* Save original value */
+                    emit(gen, "    movl (%%esp), %%eax");
+                    emit(gen, "    leal -%d(%%ebp), %%ecx", off_orig);
+                    gen_store(gen, node->type);
+                    /* Prepare 1.0 */
+                    emit(gen, "    pushl $1");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_one);
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    call __floatsitf");
+                    emit(gen, "    addl $8, %%esp");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_one);
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    movl 4(%%esp), %%eax"); /* lval address */
+                    emit(gen, "    pushl %%eax");
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    emit(gen, "    pushl %%eax");
+                    if (node->kind == AST_POST_INC) emit(gen, "    call __addtf3");
+                    else emit(gen, "    call __subtf3");
+                    emit(gen, "    addl $12, %%esp");
+                    emit(gen, "    popl %%ecx"); /* lval address */
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_res);
+                    gen_store(gen, node->type);
+                    emit(gen, "    leal -%d(%%ebp), %%eax", off_orig);
+                }
+                return;
+            }
+
             gen_load(gen, node->type);
             if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
             emit(gen, "    pushl %%eax"); /* Save original value */

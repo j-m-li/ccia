@@ -489,6 +489,53 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         gen_lval(gen, node->u.unop.operand);
         emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)"); /* push lval address */
+
+        if (node->type && type_is_floating(node->type)) {
+            if (node->type->kind == TYPE_FLOAT) {
+                gen_load(gen, node->type);
+                emit(gen, "    lui a1, 0x3f800"); /* 1.0f */
+                if (is_inc) emit(gen, "    call __addsf3");
+                else emit(gen, "    call __subsf3");
+                emit(gen, "    lw a1, 0(sp)");
+                emit(gen, "    sw a0, 0(a1)");
+                emit(gen, "    addi sp, sp, 16");
+            } else if (node->type->kind == TYPE_DOUBLE) {
+                int off_one = get_scratch_temp(gen);
+                int off_res = get_scratch_temp(gen);
+                emit_addi(gen, "t0", "s0", off_one);
+                emit(gen, "    sw zero, 0(t0)");
+                emit(gen, "    lui t1, 0x3ff00");
+                emit(gen, "    sw t1, 4(t0)");
+                emit(gen, "    lw a1, 0(sp)"); /* address of d */
+                emit_addi(gen, "a2", "s0", off_one);
+                emit_addi(gen, "a0", "s0", off_res);
+                if (is_inc) emit(gen, "    call __adddf3");
+                else emit(gen, "    call __subdf3");
+                emit(gen, "    lw a1, 0(sp)");
+                emit_addi(gen, "a0", "s0", off_res);
+                gen_store(gen, node->type);
+                emit(gen, "    addi sp, sp, 16");
+                emit_addi(gen, "a0", "s0", off_res);
+            } else if (node->type->kind == TYPE_LDOUBLE) {
+                int off_one = get_scratch_temp(gen);
+                int off_res = get_scratch_temp(gen);
+                emit_addi(gen, "a0", "s0", off_one);
+                emit(gen, "    li a1, 1");
+                emit(gen, "    call __floatsitf");
+                emit(gen, "    lw a1, 0(sp)");
+                emit_addi(gen, "a2", "s0", off_one);
+                emit_addi(gen, "a0", "s0", off_res);
+                if (is_inc) emit(gen, "    call __addtf3");
+                else emit(gen, "    call __subtf3");
+                emit(gen, "    lw a1, 0(sp)");
+                emit_addi(gen, "a0", "s0", off_res);
+                gen_store(gen, node->type);
+                emit(gen, "    addi sp, sp, 16");
+                emit_addi(gen, "a0", "s0", off_res);
+            }
+            return;
+        }
+
         gen_load(gen, node->type);
         if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
         if (is_inc) {
@@ -519,6 +566,71 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         gen_lval(gen, node->u.unop.operand);
         emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)"); /* push lval address */
+
+        if (node->type && type_is_floating(node->type)) {
+            if (node->type->kind == TYPE_FLOAT) {
+                gen_load(gen, node->type);
+                emit(gen, "    addi sp, sp, -16");
+                emit(gen, "    sw a0, 0(sp)"); /* push original value */
+                emit(gen, "    lui a1, 0x3f800"); /* 1.0f */
+                if (is_inc) emit(gen, "    call __addsf3");
+                else emit(gen, "    call __subsf3");
+                emit(gen, "    lw a1, 16(sp)");
+                emit(gen, "    sw a0, 0(a1)");
+                emit(gen, "    lw a0, 0(sp)"); /* restore original */
+                emit(gen, "    addi sp, sp, 32");
+            } else if (node->type->kind == TYPE_DOUBLE) {
+                int off_orig = get_scratch_temp(gen);
+                int off_one = get_scratch_temp(gen);
+                int off_res = get_scratch_temp(gen);
+                /* Save original value */
+                emit(gen, "    lw t2, 0(sp)");
+                emit(gen, "    lw t0, 0(t2)");
+                emit(gen, "    lw t1, 4(t2)");
+                emit_addi(gen, "t2", "s0", off_orig);
+                emit(gen, "    sw t0, 0(t2)");
+                emit(gen, "    sw t1, 4(t2)");
+                /* Prepare 1.0 */
+                emit_addi(gen, "t0", "s0", off_one);
+                emit(gen, "    sw zero, 0(t0)");
+                emit(gen, "    lui t1, 0x3ff00");
+                emit(gen, "    sw t1, 4(t0)");
+                emit(gen, "    lw a1, 0(sp)"); /* address of d */
+                emit_addi(gen, "a2", "s0", off_one);
+                emit_addi(gen, "a0", "s0", off_res);
+                if (is_inc) emit(gen, "    call __adddf3");
+                else emit(gen, "    call __subdf3");
+                emit(gen, "    lw a1, 0(sp)");
+                emit_addi(gen, "a0", "s0", off_res);
+                gen_store(gen, node->type);
+                emit(gen, "    addi sp, sp, 16");
+                emit_addi(gen, "a0", "s0", off_orig);
+            } else if (node->type->kind == TYPE_LDOUBLE) {
+                int off_orig = get_scratch_temp(gen);
+                int off_one = get_scratch_temp(gen);
+                int off_res = get_scratch_temp(gen);
+                /* Save original value */
+                emit(gen, "    lw a1, 0(sp)");
+                emit_addi(gen, "a0", "s0", off_orig);
+                gen_store(gen, node->type);
+                /* Prepare 1.0 */
+                emit_addi(gen, "a0", "s0", off_one);
+                emit(gen, "    li a1, 1");
+                emit(gen, "    call __floatsitf");
+                emit(gen, "    lw a1, 0(sp)");
+                emit_addi(gen, "a2", "s0", off_one);
+                emit_addi(gen, "a0", "s0", off_res);
+                if (is_inc) emit(gen, "    call __addtf3");
+                else emit(gen, "    call __subtf3");
+                emit(gen, "    lw a1, 0(sp)");
+                emit_addi(gen, "a0", "s0", off_res);
+                gen_store(gen, node->type);
+                emit(gen, "    addi sp, sp, 16");
+                emit_addi(gen, "a0", "s0", off_orig);
+            }
+            return;
+        }
+
         gen_load(gen, node->type);
         if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
         emit(gen, "    addi sp, sp, -16");

@@ -58,29 +58,49 @@ static void test_float32(void) {
 
 static void test_float64(void) {
     double a = 12.5;
-    double c, d, e, f;
     double b = 4.0;
+    double c, d, e, f;
+    double inc_test;
+    double inc_res;
     long l;
 
-    printf("Testing double (64-bit)... %p %p\n", &a, &c);
-	(void) (1.0 + 0.0);
-    printf("Testing double (64-bit) -1... \n");
+    printf("Testing double (64-bit)...\n");
     c = a + b; /* 16.5 */
-    printf("Testing double (64-bit) 0... %f %f %f \n", c,a,b);
     d = a - b; /* 8.5 */
     e = a * b; /* 50.0 */
     f = a / b; /* 3.125 */
-    printf("Testing double (64-bit) 1... \n");
     ASSERT(c > 16.49 && c < 16.51, "double add");
     ASSERT(d > 8.49 && d < 8.51, "double sub");
     ASSERT(e > 49.99 && e < 50.01, "double mul");
     ASSERT(f > 3.124 && f < 3.126, "double div");
 
-    printf("Testing double (64-bit) 2... \n");
+    /* Additional addition cases */
+    ASSERT((1.0 + 2.0) > 2.99 && (1.0 + 2.0) < 3.01, "double 1.0 + 2.0");
+    ASSERT((a + 0.0) == 12.5, "double + 0.0");
+    ASSERT((0.0 + a) == 12.5, "0.0 + double");
+    ASSERT((a + (-4.0)) == 8.5, "double + (-double)");
+    ASSERT(((-12.5) + 4.0) == -8.5, "(-double) + double");
+    ASSERT(((-12.5) + (-4.0)) == -16.5, "(-double) + (-double)");
+    ASSERT(((a + b) + 1.0) == 17.5, "double chained addition");
+
+    /* Increment / Decrement */
+    inc_test = 3.5;
+    inc_res = ++inc_test;
+    ASSERT(inc_test == 4.5 && inc_res == 4.5, "double prefix ++");
+    inc_res = inc_test++;
+    ASSERT(inc_test == 5.5 && inc_res == 4.5, "double postfix ++");
+    inc_res = --inc_test;
+    ASSERT(inc_test == 4.5 && inc_res == 4.5, "double prefix --");
+    inc_res = inc_test--;
+    ASSERT(inc_test == 3.5 && inc_res == 4.5, "double postfix --");
+
+    /* Compound addition */
+    inc_test += 10.0;
+    ASSERT(inc_test == 13.5, "double +=");
+
     /* Unary negation */
     ASSERT(-a < 0.0, "double neg");
 
-    printf("Testing double (64-bit) 3... \n");
     /* Comparisons */
     ASSERT(a > b, "double gt");
     ASSERT(b < a, "double lt");
@@ -89,15 +109,11 @@ static void test_float64(void) {
     ASSERT(a == 12.5, "double eq");
     ASSERT(a != b, "double ne");
 
-    printf("Testing double (64-bit) 4... \n");
     /* Conversions */
     l = (long)a;
-    printf("Testing double (64-bit) 5... \n");
     ASSERT(l == 12, "double to long cast");
     b = (double)l;
-    printf("Testing double (64-bit) 6... \n");
     ASSERT(b == 12.0, "long to double cast");
-    printf("Testing double (64-bit) PASS... \n");
 }
 
 static void test_float128(void) {
