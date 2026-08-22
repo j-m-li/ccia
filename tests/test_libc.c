@@ -166,12 +166,40 @@ int test_malloc_free_realloc(void) {
     return 0;
 }
 
+int test_printf_float(void) {
+    char buf[128];
+
+    sprintf(buf, "%.2f", 3.14159265);
+    if (strcmp(buf, "3.14") != 0) return 1;
+
+    sprintf(buf, "%f", -42.5);
+    if (strcmp(buf, "-42.500000") != 0) return 2;
+
+    sprintf(buf, "%.3e", 12345.678);
+    if (strcmp(buf, "1.235e+04") != 0) return 3;
+
+    sprintf(buf, "%.4g", 12345.678);
+    if (strcmp(buf, "1.235e+04") != 0) return 4;
+
+    sprintf(buf, "%.4g", 0.0001234);
+    if (strcmp(buf, "0.0001234") != 0) return 5;
+
+    sprintf(buf, "%+8.2f", 3.5);
+    if (strcmp(buf, "   +3.50") != 0) return 6;
+
+    sprintf(buf, "%-8.2f", 3.5);
+    if (strcmp(buf, "3.50    ") != 0) return 7;
+
+    return 0;
+}
+
 int main(void) {
     if (test_memory() != 0) return 1;
     if (test_strings() != 0) return 2;
     if (test_linked_list() != 0) return 3;
     if (test_system() != 0) return 4;
     if (test_malloc_free_realloc() != 0) return 5;
+    if (test_printf_float() != 0) return 6;
 
     printf("PASS: test_libc\n");
     return 0;

@@ -32,7 +32,7 @@ void type_init(void) {
     type_uint = type_new(TYPE_INT, 4, 4);
     type_uint->is_unsigned = 1;
 
-#if defined(TARGET_I386) || defined(TARGET_RISCV32) || defined(TARGET_32BIT)
+#if defined(TARGET_I386)
     type_long = type_new(TYPE_LONG, 4, 4);
     type_ulong = type_new(TYPE_LONG, 4, 4);
     type_ulong->is_unsigned = 1;
@@ -40,6 +40,14 @@ void type_init(void) {
     type_float = type_new(TYPE_FLOAT, 4, 4);
     type_double = type_new(TYPE_DOUBLE, 8, 4);
     type_ldouble = type_new(TYPE_LDOUBLE, 16, 4);
+#elif defined(TARGET_RISCV32)
+    type_long = type_new(TYPE_LONG, 4, 4);
+    type_ulong = type_new(TYPE_LONG, 4, 4);
+    type_ulong->is_unsigned = 1;
+
+    type_float = type_new(TYPE_FLOAT, 4, 4);
+    type_double = type_new(TYPE_DOUBLE, 8, 8);
+    type_ldouble = type_new(TYPE_LDOUBLE, 16, 16);
 #else
     type_long = type_new(TYPE_LONG, 8, 8);
     type_ulong = type_new(TYPE_LONG, 8, 8);

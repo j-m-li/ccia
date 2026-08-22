@@ -1443,7 +1443,7 @@ void *__extendsftf2(void *res, unsigned int a) {
     }
     exp = exp - F32_BIAS + F128_BIAS;
     u128_zero(&m128);
-    m128.w[0] = (unsigned int)(mant & F32_MANT_MASK);
+    m128.w[0] = (unsigned int)mant;
     u128_shl(&m128, &m128, 112 - 23);
     f128_pack(r, sign, exp, &m128);
     return r;
@@ -1466,7 +1466,7 @@ void *__extenddftf2(void *res, const void *a_ptr) {
     exp = exp - F64_BIAS + F128_BIAS;
     u128_zero(&m128);
     m128.w[0] = mant.lo;
-    m128.w[1] = mant.hi & 0x000FFFFFU;
+    m128.w[1] = mant.hi;
     u128_shl(&m128, &m128, 112 - 52);
     f128_pack(r, sign, exp, &m128);
     return r;
@@ -1511,7 +1511,7 @@ void *__extenddftf2(void *res, unsigned long a_val) {
     exp = exp - F64_BIAS + F128_BIAS;
     u128_zero(&m128);
     m128.w[0] = mant.lo;
-    m128.w[1] = mant.hi & 0x000FFFFFU;
+    m128.w[1] = mant.hi;
     u128_shl(&m128, &m128, 112 - 52);
     f128_pack(r, sign, exp, &m128);
     return r;

@@ -100,6 +100,26 @@ static void emit_addi(CodeGen *gen, const char *rd, const char *rs, int imm) {
     }
 }
 
+static void emit_sw_s0(CodeGen *gen, const char *src_reg, int off) {
+    if (off >= -2048 && off <= 2047) {
+        emit(gen, "    sw %s, %d(s0)", src_reg, off);
+    } else {
+        const char *tmp = (strcmp(src_reg, "t0") == 0) ? "t1" : "t0";
+        emit_addi(gen, tmp, "s0", off);
+        emit(gen, "    sw %s, 0(%s)", src_reg, tmp);
+    }
+}
+
+static void emit_lw_s0(CodeGen *gen, const char *dst_reg, int off) {
+    if (off >= -2048 && off <= 2047) {
+        emit(gen, "    lw %s, %d(s0)", dst_reg, off);
+    } else {
+        const char *tmp = (strcmp(dst_reg, "t0") == 0) ? "t1" : "t0";
+        emit_addi(gen, tmp, "s0", off);
+        emit(gen, "    lw %s, 0(%s)", dst_reg, tmp);
+    }
+}
+
 /* ========================================================================= */
 /* Memory Load and Store Helper Functions (32-bit RISC-V RV32I)              */
 /* ========================================================================= */
@@ -195,8 +215,6 @@ static void gen_bitfield_store(CodeGen *gen, Member *m) {
         emit(gen, "    slli a0, a0, %d", m->bit_offset);
     }
     emit(gen, "    mv t1, a0"); /* New bits in t1 */
-    emit(gen, "    lw a1, 0(sp)"); /* Destination address in a1 */
-    emit(gen, "    addi sp, sp, 4");
     if (m->type->size == 1) emit(gen, "    lbu a0, 0(a1)");
     else if (m->type->size == 2) emit(gen, "    lhu a0, 0(a1)");
     else emit(gen, "    lw a0, 0(a1)");
@@ -373,6 +391,18 @@ static int is_multiword_arg(Type *type) {
     return 0;
 }
 
+static int needs_8byte_align(Type *type) {
+    if (!type) return 0;
+    if (type->kind == TYPE_DOUBLE || type->kind == TYPE_LDOUBLE ||
+        ((type->kind == TYPE_INT || type->kind == TYPE_LONG) && type->size >= 8)) {
+        return 1;
+    }
+    if ((type->kind == TYPE_STRUCT || type->kind == TYPE_UNION) && type->align >= 8) {
+        return 1;
+    }
+    return 0;
+}
+
 static void gen_expr(CodeGen *gen, AstNode *node) {
     if (!node) return;
 
@@ -457,7 +487,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             step = node->type->base->size > 0 ? node->type->base->size : 1;
         }
         gen_lval(gen, node->u.unop.operand);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)"); /* push lval address */
         gen_load(gen, node->type);
         if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
@@ -467,11 +497,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             emit(gen, "    addi a0, a0, -%d", step);
         }
         if (m && m->bit_width > 0) {
+            emit(gen, "    lw a1, 0(sp)");
             gen_bitfield_store(gen, m);
+            emit(gen, "    addi sp, sp, 16");
         } else {
             emit(gen, "    lw a1, 0(sp)");
             gen_store(gen, node->type);
-            emit(gen, "    addi sp, sp, 4");
+            emit(gen, "    addi sp, sp, 16");
         }
         return;
     }
@@ -485,11 +517,11 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             step = node->type->base->size > 0 ? node->type->base->size : 1;
         }
         gen_lval(gen, node->u.unop.operand);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)"); /* push lval address */
         gen_load(gen, node->type);
         if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)"); /* push original value */
         if (is_inc) {
             emit(gen, "    addi a0, a0, %d", step);
@@ -497,17 +529,15 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             emit(gen, "    addi a0, a0, -%d", step);
         }
         if (m && m->bit_width > 0) {
-            emit(gen, "    lw a1, 4(sp)");
-            emit(gen, "    addi sp, sp, -4");
-            emit(gen, "    sw a1, 0(sp)");
+            emit(gen, "    lw a1, 16(sp)");
             gen_bitfield_store(gen, m);
             emit(gen, "    lw a0, 0(sp)");
-            emit(gen, "    addi sp, sp, 8");
+            emit(gen, "    addi sp, sp, 32");
         } else {
-            emit(gen, "    lw a1, 4(sp)");
+            emit(gen, "    lw a1, 16(sp)");
             gen_store(gen, node->type);
             emit(gen, "    lw a0, 0(sp)");
-            emit(gen, "    addi sp, sp, 8");
+            emit(gen, "    addi sp, sp, 32");
         }
         return;
     }
@@ -529,7 +559,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         AstNode *lhs = node->u.binop.lhs;
         Member *m = (lhs->kind == AST_MEMBER) ? lhs->u.member.member : NULL;
         gen_lval(gen, lhs);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)");
         gen_expr(gen, node->u.binop.rhs);
         if (lhs->type && node->u.binop.rhs->type &&
@@ -537,11 +567,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             gen_cast_to(gen, node->u.binop.rhs->type, lhs->type);
         }
         if (m && m->bit_width > 0) {
+            emit(gen, "    lw a1, 0(sp)");
             gen_bitfield_store(gen, m);
+            emit(gen, "    addi sp, sp, 16");
         } else {
             emit(gen, "    lw a1, 0(sp)");
             gen_store(gen, node->type);
-            emit(gen, "    addi sp, sp, 4");
+            emit(gen, "    addi sp, sp, 16");
         }
         return;
     }
@@ -562,11 +594,11 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         int is_unsigned = node->type && node->type->is_unsigned;
         if (node->type && node->type->base) step = node->type->base->size;
         gen_lval(gen, lhs);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)");
         gen_load(gen, node->type);
         if (m && m->bit_width > 0) gen_bitfield_load(gen, m);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)");
         gen_expr(gen, node->u.binop.rhs);
         if (node->type && type_is_floating(node->type)) {
@@ -576,7 +608,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         }
         emit(gen, "    mv a1, a0");
         emit(gen, "    lw a0, 0(sp)");
-        emit(gen, "    addi sp, sp, 4");
+        emit(gen, "    addi sp, sp, 16");
 
         if (node->type && type_is_floating(node->type)) {
             if (node->type->kind == TYPE_FLOAT) {
@@ -607,24 +639,24 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             }
         } else if (node->kind == AST_ADD_ASSIGN) {
             if (step > 1) {
-                emit(gen, "    addi sp, sp, -4");
+                emit(gen, "    addi sp, sp, -16");
                 emit(gen, "    sw a0, 0(sp)");
                 emit(gen, "    li a0, %d", step);
                 emit(gen, "    call __mulsi3");
                 emit(gen, "    mv a1, a0");
                 emit(gen, "    lw a0, 0(sp)");
-                emit(gen, "    addi sp, sp, 4");
+                emit(gen, "    addi sp, sp, 16");
             }
             emit(gen, "    add a0, a0, a1");
         } else if (node->kind == AST_SUB_ASSIGN) {
             if (step > 1) {
-                emit(gen, "    addi sp, sp, -4");
+                emit(gen, "    addi sp, sp, -16");
                 emit(gen, "    sw a0, 0(sp)");
                 emit(gen, "    li a0, %d", step);
                 emit(gen, "    call __mulsi3");
                 emit(gen, "    mv a1, a0");
                 emit(gen, "    lw a0, 0(sp)");
-                emit(gen, "    addi sp, sp, 4");
+                emit(gen, "    addi sp, sp, 16");
             }
             emit(gen, "    sub a0, a0, a1");
         } else if (node->kind == AST_MUL_ASSIGN) {
@@ -649,11 +681,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         }
 
         if (m && m->bit_width > 0) {
+            emit(gen, "    lw a1, 0(sp)");
             gen_bitfield_store(gen, m);
+            emit(gen, "    addi sp, sp, 16");
         } else {
             emit(gen, "    lw a1, 0(sp)");
             gen_store(gen, node->type);
-            emit(gen, "    addi sp, sp, 4");
+            emit(gen, "    addi sp, sp, 16");
         }
         return;
     }
@@ -714,15 +748,25 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         int stack_words_count = 0;
         int is_direct = (node->u.call.func->kind == AST_VAR && node->u.call.func->u.sym->kind == SYM_FUNC);
         int *arg_words = (int *)malloc((num_args > 0 ? num_args : 1) * sizeof(int));
+        int *arg_pads = (int *)malloc((num_args > 0 ? num_args : 1) * sizeof(int));
+        int off_fn = 0;
 
         for (i = 0; i < num_args; i++) {
             AstNode *arg = (AstNode *)vec_get(args, i);
             int words = 1;
+            int pad = 0;
             if (arg->type && is_multiword_arg(arg->type)) {
                 int sz = (arg->type->size + 3) & ~3;
                 words = sz / 4;
                 if (words < 1) words = 1;
             }
+            if (needs_8byte_align(arg->type)) {
+                if (total_words % 2 != 0) {
+                    pad = 1;
+                    total_words++;
+                }
+            }
+            arg_pads[i] = pad;
             arg_words[i] = words;
             total_words += words;
         }
@@ -738,11 +782,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                     gen_expr(gen, (AstNode *)vec_get(args, 0));
                 }
                 free(arg_words);
+                free(arg_pads);
                 return;
             }
             if (strcmp(fname, "__builtin_constant_p") == 0) {
                 emit(gen, "    li a0, 0");
                 free(arg_words);
+                free(arg_pads);
                 return;
             }
             if (strcmp(fname, "__builtin_va_start") == 0) {
@@ -750,71 +796,86 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                     int num_params = gen->current_func && gen->current_func->type && gen->current_func->type->params ?
                                      gen->current_func->type->params->size : 1;
                     gen_lval(gen, (AstNode *)vec_get(args, 0));
-                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    addi sp, sp, -16");
                     emit(gen, "    sw a0, 0(sp)");
                     emit(gen, "    addi a0, s0, -%d", 32 - num_params * 4);
                     emit(gen, "    lw a1, 0(sp)");
                     emit(gen, "    sw a0, 0(a1)");
-                    emit(gen, "    addi sp, sp, 4");
+                    emit(gen, "    addi sp, sp, 16");
                 }
                 free(arg_words);
+                free(arg_pads);
                 return;
             }
             if (strcmp(fname, "__builtin_va_copy") == 0) {
                 if (args && args->size >= 2) {
                     gen_expr(gen, (AstNode *)vec_get(args, 1));
-                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    addi sp, sp, -16");
                     emit(gen, "    sw a0, 0(sp)");
                     gen_lval(gen, (AstNode *)vec_get(args, 0));
                     emit(gen, "    lw a1, 0(sp)");
                     emit(gen, "    sw a1, 0(a0)");
-                    emit(gen, "    addi sp, sp, 4");
+                    emit(gen, "    addi sp, sp, 16");
                 }
                 free(arg_words);
+                free(arg_pads);
                 return;
             }
             if (strcmp(fname, "__builtin_va_end") == 0) {
                 free(arg_words);
+                free(arg_pads);
                 return;
             }
-        } else {
-            /* Evaluate function pointer expression and push to stack */
+        }
+
+        if (!is_direct) {
+            off_fn = get_scratch_temp(gen);
             gen_expr(gen, node->u.call.func);
-            emit(gen, "    addi sp, sp, -4");
-            emit(gen, "    sw a0, 0(sp)");
+            emit_sw_s0(gen, "a0", off_fn);
         }
 
         if (total_words <= 8) {
-            /* Evaluate args forward, push each word */
+            /* Evaluate args forward, push each word (16-byte aligned per push) */
             for (i = 0; i < num_args; i++) {
                 AstNode *arg = (AstNode *)vec_get(args, i);
+                if (arg_pads[i]) {
+                    emit(gen, "    addi sp, sp, -16");
+                    emit(gen, "    sw zero, 0(sp)");
+                }
                 gen_expr(gen, arg);
                 if (arg->type && is_multiword_arg(arg->type)) {
                     int w;
                     for (w = 0; w < arg_words[i]; w++) {
                         emit(gen, "    lw t0, %d(a0)", w * 4);
-                        emit(gen, "    addi sp, sp, -4");
+                        emit(gen, "    addi sp, sp, -16");
                         emit(gen, "    sw t0, 0(sp)");
                     }
                 } else {
-                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    addi sp, sp, -16");
                     emit(gen, "    sw a0, 0(sp)");
                 }
             }
             /* Pop into a{total_words-1} down to a0 */
             for (i = total_words - 1; i >= 0; i--) {
                 emit(gen, "    lw a%d, 0(sp)", i);
-                emit(gen, "    addi sp, sp, 4");
+                emit(gen, "    addi sp, sp, 16");
             }
             if (!is_direct) {
-                /* Pop function pointer into t0 */
-                emit(gen, "    lw t0, 0(sp)");
-                emit(gen, "    addi sp, sp, 4");
+                emit_lw_s0(gen, "t0", off_fn);
             }
         } else {
-            /* Evaluate all args forward and push all words into a temporary frame */
+            int total_bytes = (total_words * 4 + 15) & ~15;
+            int pad_bytes = total_bytes - total_words * 4;
+            if (pad_bytes > 0) {
+                emit(gen, "    addi sp, sp, -%d", pad_bytes);
+            }
+            /* Evaluate all args forward and push all words */
             for (i = 0; i < num_args; i++) {
                 AstNode *arg = (AstNode *)vec_get(args, i);
+                if (arg_pads[i]) {
+                    emit(gen, "    addi sp, sp, -4");
+                    emit(gen, "    sw zero, 0(sp)");
+                }
                 gen_expr(gen, arg);
                 if (arg->type && is_multiword_arg(arg->type)) {
                     int w;
@@ -836,7 +897,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             }
 
             if (!is_direct) {
-                emit(gen, "    lw t0, %d(sp)", total_words * 4);
+                emit_lw_s0(gen, "t0", off_fn);
             }
 
             /* Reverse the stack words so first stack arg is at 0(sp) */
@@ -850,6 +911,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             }
         }
         free(arg_words);
+        free(arg_pads);
 
         if (is_direct) {
             emit(gen, "    call %s", node->u.call.func->u.sym->name);
@@ -858,8 +920,8 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
         }
 
         if (total_words > 8) {
-            int total_pushed_bytes = (total_words + (is_direct ? 0 : 1)) * 4;
-            emit(gen, "    addi sp, sp, %d", total_pushed_bytes);
+            int total_bytes = (total_words * 4 + 15) & ~15;
+            emit(gen, "    addi sp, sp, %d", total_bytes);
         }
 
         if (node->type && node->type->kind == TYPE_DOUBLE) {
@@ -875,9 +937,27 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
     case AST_VA_ARG: {
         int size = node->type ? (node->type->size > 0 ? node->type->size : 4) : 4;
         int aligned_size = (size + 3) & ~3;
+        int need_align8 = needs_8byte_align(node->type);
         if (aligned_size < 4) aligned_size = 4;
+        if (need_align8) {
+            /* Align ap to 8-byte boundary */
+            if (node->u.va_arg.ap->kind == AST_VAR) {
+                Symbol *sym = node->u.va_arg.ap->u.sym;
+                emit_addi(gen, "a1", "s0", sym->stack_offset);
+                emit(gen, "    lw t0, 0(a1)");
+                emit(gen, "    addi t0, t0, 7");
+                emit(gen, "    andi t0, t0, -8");
+                emit(gen, "    sw t0, 0(a1)");
+            } else {
+                gen_lval(gen, node->u.va_arg.ap);
+                emit(gen, "    lw t0, 0(a0)");
+                emit(gen, "    addi t0, t0, 7");
+                emit(gen, "    andi t0, t0, -8");
+                emit(gen, "    sw t0, 0(a0)");
+            }
+        }
         gen_expr(gen, node->u.va_arg.ap);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)");
         if (node->u.va_arg.ap->kind == AST_VAR) {
             Symbol *sym = node->u.va_arg.ap->u.sym;
@@ -892,7 +972,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             emit(gen, "    sw t0, 0(a0)");
         }
         emit(gen, "    lw a0, 0(sp)");
-        emit(gen, "    addi sp, sp, 4");
+        emit(gen, "    addi sp, sp, 16");
         if (node->type && (node->type->kind == TYPE_STRUCT || node->type->kind == TYPE_UNION ||
                            node->type->kind == TYPE_DOUBLE || node->type->kind == TYPE_LDOUBLE)) {
             /* Keep a0 as pointer to the multi-word value in va_list buffer */
@@ -924,7 +1004,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             if (!type_equal(lhs->type, common_type)) {
                 gen_cast_to(gen, lhs->type, common_type);
             }
-            emit(gen, "    addi sp, sp, -4");
+            emit(gen, "    addi sp, sp, -16");
             emit(gen, "    sw a0, 0(sp)");
             gen_expr(gen, rhs);
             if (!type_equal(rhs->type, common_type)) {
@@ -932,7 +1012,7 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             }
             emit(gen, "    mv a1, a0"); /* rhs in a1 */
             emit(gen, "    lw a0, 0(sp)"); /* lhs in a0 */
-            emit(gen, "    addi sp, sp, 4");
+            emit(gen, "    addi sp, sp, 16");
 
             if (common_type->kind == TYPE_FLOAT) {
                 switch (node->kind) {
@@ -1066,35 +1146,36 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                       (rhs->type && rhs->type->is_unsigned);
 
         gen_expr(gen, lhs);
-        emit(gen, "    addi sp, sp, -4");
+        emit(gen, "    addi sp, sp, -16");
         emit(gen, "    sw a0, 0(sp)");
         gen_expr(gen, rhs);
         emit(gen, "    mv a1, a0");
         emit(gen, "    lw a0, 0(sp)");
-        emit(gen, "    addi sp, sp, 4");
+        emit(gen, "    addi sp, sp, 16");
 
         switch (node->kind) {
             case AST_ADD:
                 if (is_ptr_lhs && !is_ptr_rhs) {
                     int scale = lhs->type->base ? lhs->type->base->size : 1;
                     if (scale > 1) {
-                        emit(gen, "    addi sp, sp, -4");
+                        emit(gen, "    addi sp, sp, -16");
                         emit(gen, "    sw a0, 0(sp)");
-                        emit(gen, "    li a0, %d", scale);
+                        emit(gen, "    mv a0, a1");
+                        emit(gen, "    li a1, %d", scale);
                         emit(gen, "    call __mulsi3");
                         emit(gen, "    mv a1, a0");
                         emit(gen, "    lw a0, 0(sp)");
-                        emit(gen, "    addi sp, sp, 4");
+                        emit(gen, "    addi sp, sp, 16");
                     }
                 } else if (!is_ptr_lhs && is_ptr_rhs) {
                     int scale = rhs->type->base ? rhs->type->base->size : 1;
                     if (scale > 1) {
-                        emit(gen, "    addi sp, sp, -4");
+                        emit(gen, "    addi sp, sp, -16");
                         emit(gen, "    sw a1, 0(sp)");
                         emit(gen, "    li a1, %d", scale);
                         emit(gen, "    call __mulsi3");
                         emit(gen, "    lw a1, 0(sp)");
-                        emit(gen, "    addi sp, sp, 4");
+                        emit(gen, "    addi sp, sp, 16");
                     }
                 }
                 emit(gen, "    add a0, a0, a1");
@@ -1104,13 +1185,14 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 if (is_ptr_lhs && !is_ptr_rhs) {
                     int scale = lhs->type->base ? lhs->type->base->size : 1;
                     if (scale > 1) {
-                        emit(gen, "    addi sp, sp, -4");
+                        emit(gen, "    addi sp, sp, -16");
                         emit(gen, "    sw a0, 0(sp)");
-                        emit(gen, "    li a0, %d", scale);
+                        emit(gen, "    mv a0, a1");
+                        emit(gen, "    li a1, %d", scale);
                         emit(gen, "    call __mulsi3");
                         emit(gen, "    mv a1, a0");
                         emit(gen, "    lw a0, 0(sp)");
-                        emit(gen, "    addi sp, sp, 4");
+                        emit(gen, "    addi sp, sp, 16");
                     }
                     emit(gen, "    sub a0, a0, a1");
                 } else if (is_ptr_lhs && is_ptr_rhs) {
@@ -1706,6 +1788,13 @@ static void gen_func_def(CodeGen *gen, AstNode *func_node) {
                     int words = psize / 4;
                     int w;
                     if (words < 1) words = 1;
+                    if (needs_8byte_align(psym->type)) {
+                        if (arg_reg < 8 && (arg_reg % 2 != 0)) {
+                            arg_reg++;
+                        } else if (arg_reg >= 8 && (stack_arg_offset % 8 != 0)) {
+                            stack_arg_offset += 4;
+                        }
+                    }
                     for (w = 0; w < words; w++) {
                         int slot_offset = psym->stack_offset + w * 4;
                         if (arg_reg < 8) {

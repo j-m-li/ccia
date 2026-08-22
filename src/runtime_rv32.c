@@ -970,6 +970,238 @@ static void sink_put_int(FormatSink *s, long val, int width, char pad) {
     }
 }
 
+typedef union {
+    double d;
+    struct {
+        unsigned int lo;
+        unsigned int hi;
+    } u32;
+} DoubleBits;
+
+static int is_nan(double d) {
+    DoubleBits db;
+    db.d = d;
+    return ((db.u32.hi & 0x7ff00000) == 0x7ff00000) &&
+           (((db.u32.hi & 0x000fffff) != 0) || (db.u32.lo != 0));
+}
+
+static int is_inf(double d) {
+    DoubleBits db;
+    db.d = d;
+    return ((db.u32.hi & 0x7ff00000) == 0x7ff00000) &&
+           ((db.u32.hi & 0x000fffff) == 0) && (db.u32.lo == 0);
+}
+
+static int get_sign(double d) {
+    DoubleBits db;
+    db.d = d;
+    return (db.u32.hi >> 31) & 1;
+}
+
+int __unordsf2(float a, float b) {
+    union { float f; unsigned int u; } ua, ub;
+    ua.f = a; ub.f = b;
+    return (((ua.u & 0x7f800000) == 0x7f800000 && (ua.u & 0x007fffff) != 0) ||
+            ((ub.u & 0x7f800000) == 0x7f800000 && (ub.u & 0x007fffff) != 0)) ? 1 : 0;
+}
+
+int __unorddf2(double a, double b) {
+    return (is_nan(a) || is_nan(b)) ? 1 : 0;
+}
+
+void *__adddf3(void *res, const void *a, const void *b);
+void *__subdf3(void *res, const void *a, const void *b);
+void *__muldf3(void *res, const void *a, const void *b);
+void *__divdf3(void *res, const void *a, const void *b);
+int __ltdf2(const void *a, const void *b);
+int __fixdfsi(const void *a);
+void *__floatsidf(void *res, int i);
+
+static double rt_adddf(double a, double b) { double res; __adddf3(&res, &a, &b); return res; }
+static double rt_subdf(double a, double b) { double res; __subdf3(&res, &a, &b); return res; }
+static double rt_muldf(double a, double b) { double res; __muldf3(&res, &a, &b); return res; }
+static double rt_divdf(double a, double b) { double res; __divdf3(&res, &a, &b); return res; }
+static int rt_ltdf(double a, double b) { return __ltdf2(&a, &b) < 0; }
+static int rt_gedf(double a, double b) { return __ltdf2(&a, &b) >= 0; }
+static int rt_df2si(double a) { return __fixdfsi(&a); }
+static double rt_si2df(int i) { double res; __floatsidf(&res, i); return res; }
+
+static void dtoa_f(char *buf, int max_len, double val, int precision, int hash_flag) {
+    int i;
+    double rounder;
+    double temp;
+    double scale;
+    int pos;
+    double frac_part;
+    double d10 = rt_si2df(10);
+    double d1 = rt_si2df(1);
+
+    if (precision < 0) precision = 6;
+    if (precision > 20) precision = 20;
+
+    rounder = rt_divdf(d1, rt_si2df(2));
+    for (i = 0; i < precision; i++) rounder = rt_divdf(rounder, d10);
+    val = rt_adddf(val, rounder);
+
+    temp = val;
+    scale = d1;
+    while (rt_gedf(temp, d10)) {
+        temp = rt_divdf(temp, d10);
+        scale = rt_muldf(scale, d10);
+    }
+
+    pos = 0;
+    temp = val;
+    while (rt_gedf(scale, d1)) {
+        int digit = rt_df2si(rt_divdf(temp, scale));
+        if (digit > 9) digit = 9;
+        if (digit < 0) digit = 0;
+        if (pos < max_len - 1) buf[pos++] = '0' + digit;
+        temp = rt_subdf(temp, rt_muldf(rt_si2df(digit), scale));
+        scale = rt_divdf(scale, d10);
+    }
+    if (pos == 0) {
+        if (pos < max_len - 1) buf[pos++] = '0';
+    }
+
+    if (precision > 0 || hash_flag) {
+        if (pos < max_len - 1) buf[pos++] = '.';
+    }
+
+    frac_part = temp;
+    for (i = 0; i < precision; i++) {
+        int digit;
+        frac_part = rt_muldf(frac_part, d10);
+        digit = rt_df2si(frac_part);
+        if (digit > 9) digit = 9;
+        if (digit < 0) digit = 0;
+        if (pos < max_len - 1) buf[pos++] = '0' + digit;
+        frac_part = rt_subdf(frac_part, rt_si2df(digit));
+    }
+
+    buf[pos] = '\0';
+}
+
+static void dtoa_e(char *buf, int max_len, double val, int precision, int uppercase, int hash_flag) {
+    int i;
+    int exp = 0;
+    double rounder;
+    int int_digit;
+    double frac;
+    int pos = 0;
+    double d10 = rt_si2df(10);
+    double d1 = rt_si2df(1);
+    double d0 = rt_si2df(0);
+
+    if (precision < 0) precision = 6;
+    if (precision > 20) precision = 20;
+
+    if (rt_ltdf(d0, val)) {
+        while (rt_gedf(val, d10)) {
+            val = rt_divdf(val, d10);
+            exp++;
+        }
+        while (rt_ltdf(val, d1)) {
+            val = rt_muldf(val, d10);
+            exp--;
+        }
+    }
+
+    rounder = rt_divdf(d1, rt_si2df(2));
+    for (i = 0; i < precision; i++) rounder = rt_divdf(rounder, d10);
+    val = rt_adddf(val, rounder);
+    if (rt_gedf(val, d10)) {
+        val = rt_divdf(val, d10);
+        exp++;
+    }
+
+    int_digit = rt_df2si(val);
+    frac = rt_subdf(val, rt_si2df(int_digit));
+
+    if (pos < max_len - 1) buf[pos++] = '0' + int_digit;
+
+    if (precision > 0 || hash_flag) {
+        if (pos < max_len - 1) buf[pos++] = '.';
+    }
+
+    for (i = 0; i < precision; i++) {
+        int digit;
+        frac = rt_muldf(frac, d10);
+        digit = rt_df2si(frac);
+        if (digit > 9) digit = 9;
+        if (digit < 0) digit = 0;
+        if (pos < max_len - 1) buf[pos++] = '0' + digit;
+        frac = rt_subdf(frac, rt_si2df(digit));
+    }
+
+    if (pos < max_len - 1) buf[pos++] = uppercase ? 'E' : 'e';
+    if (exp >= 0) {
+        if (pos < max_len - 1) buf[pos++] = '+';
+    } else {
+        if (pos < max_len - 1) buf[pos++] = '-';
+        exp = -exp;
+    }
+    if (exp < 10) {
+        if (pos < max_len - 1) buf[pos++] = '0';
+        if (pos < max_len - 1) buf[pos++] = '0' + exp;
+    } else {
+        char exp_buf[16];
+        int exp_len = 0;
+        while (exp > 0) {
+            exp_buf[exp_len++] = '0' + (exp % 10);
+            exp /= 10;
+        }
+        for (i = exp_len - 1; i >= 0; i--) {
+            if (pos < max_len - 1) buf[pos++] = exp_buf[i];
+        }
+    }
+
+    buf[pos] = '\0';
+}
+
+static void dtoa_g(char *buf, int max_len, double val, int precision, int uppercase, int hash_flag) {
+    double temp;
+    int exp = 0;
+    double d10 = rt_si2df(10);
+    double d1 = rt_si2df(1);
+    double d0 = rt_si2df(0);
+
+    if (precision < 0) precision = 6;
+    if (precision == 0) precision = 1;
+    if (precision > 20) precision = 20;
+
+    temp = val;
+    if (rt_ltdf(d0, temp)) {
+        while (rt_gedf(temp, d10)) { temp = rt_divdf(temp, d10); exp++; }
+        while (rt_ltdf(temp, d1)) { temp = rt_muldf(temp, d10); exp--; }
+    }
+
+    if (exp < -4 || exp >= precision) {
+        int p = precision - 1;
+        dtoa_e(buf, max_len, val, p, uppercase, hash_flag);
+    } else {
+        int p = precision - (exp + 1);
+        if (p < 0) p = 0;
+        dtoa_f(buf, max_len, val, p, hash_flag);
+    }
+
+    if (!hash_flag) {
+        char *exp_p = strchr(buf, uppercase ? 'E' : 'e');
+        char *dot = strchr(buf, '.');
+        if (dot) {
+            char *end = exp_p ? exp_p : (buf + strlen(buf));
+            char *p = end - 1;
+            while (p > dot && *p == '0') p--;
+            if (p == dot) p--;
+            if (exp_p) {
+                memmove(p + 1, exp_p, strlen(exp_p) + 1);
+            } else {
+                *(p + 1) = '\0';
+            }
+        }
+    }
+}
+
 static void format_core(FormatSink *sink, const char *format, va_list ap) {
     const char *p = format;
     while (*p) {
@@ -986,6 +1218,9 @@ static void format_core(FormatSink *sink, const char *format, va_list ap) {
 
         {
             int left_align = 0;
+            int plus_flag = 0;
+            int space_flag = 0;
+            int hash_flag = 0;
             char pad = ' ';
             int width = 0;
             int precision = -1;
@@ -994,7 +1229,10 @@ static void format_core(FormatSink *sink, const char *format, va_list ap) {
             /* Flags */
             while (*p == '-' || *p == '+' || *p == ' ' || *p == '#' || *p == '0') {
                 if (*p == '-') left_align = 1;
-                if (*p == '0' && !left_align) pad = '0';
+                else if (*p == '+') plus_flag = 1;
+                else if (*p == ' ') space_flag = 1;
+                else if (*p == '#') hash_flag = 1;
+                else if (*p == '0' && !left_align) pad = '0';
                 p++;
             }
             if (left_align) pad = ' ';
@@ -1033,6 +1271,7 @@ static void format_core(FormatSink *sink, const char *format, va_list ap) {
             /* Length modifier */
             if (*p == 'h') { p++; if (*p == 'h') p++; }
             else if (*p == 'l') { is_long = 1; p++; if (*p == 'l') { is_long = 2; p++; } }
+            else if (*p == 'L') { is_long = 3; p++; }
             else if (*p == 'z' || *p == 't') { is_long = 1; p++; }
 
             if (*p == 'd' || *p == 'i') {
@@ -1080,6 +1319,55 @@ static void format_core(FormatSink *sink, const char *format, va_list ap) {
                     for (i = 0; i < width - len; i++) sink_putc(sink, pad);
                 }
                 for (i = len - 1; i >= 0; i--) sink_putc(sink, buf[i]);
+                if (left_align && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, ' ');
+                }
+            } else if (*p == 'f' || *p == 'F' || *p == 'e' || *p == 'E' || *p == 'g' || *p == 'G') {
+                double val = va_arg(ap, double);
+                char spec = *p;
+                int uppercase = (spec == 'F' || spec == 'E' || spec == 'G');
+                int is_neg = get_sign(val);
+                char num_buf[128];
+                int len, i;
+                char sign_c = '\0';
+
+                if (is_nan(val)) {
+                    strcpy(num_buf, uppercase ? "NAN" : "nan");
+                } else if (is_inf(val)) {
+                    strcpy(num_buf, uppercase ? "INF" : "inf");
+                } else {
+                    double abs_val = is_neg ? -val : val;
+                    if (spec == 'f' || spec == 'F') {
+                        dtoa_f(num_buf, sizeof(num_buf), abs_val, precision, hash_flag);
+                    } else if (spec == 'e' || spec == 'E') {
+                        dtoa_e(num_buf, sizeof(num_buf), abs_val, precision, uppercase, hash_flag);
+                    } else {
+                        dtoa_g(num_buf, sizeof(num_buf), abs_val, precision, uppercase, hash_flag);
+                    }
+                }
+
+                if (is_neg) {
+                    sign_c = '-';
+                } else if (plus_flag) {
+                    sign_c = '+';
+                } else if (space_flag) {
+                    sign_c = ' ';
+                }
+
+                len = (int)strlen(num_buf) + (sign_c ? 1 : 0);
+
+                if (!left_align && pad == ' ' && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, ' ');
+                }
+                if (sign_c) {
+                    sink_putc(sink, sign_c);
+                }
+                if (!left_align && pad == '0' && width > len) {
+                    for (i = 0; i < width - len; i++) sink_putc(sink, '0');
+                }
+                for (i = 0; num_buf[i]; i++) {
+                    sink_putc(sink, num_buf[i]);
+                }
                 if (left_align && width > len) {
                     for (i = 0; i < width - len; i++) sink_putc(sink, ' ');
                 }

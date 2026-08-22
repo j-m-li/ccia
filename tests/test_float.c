@@ -62,9 +62,8 @@ static void test_float64(void) {
     double c, d, e, f;
     long l;
 
-    printf("Testing double (64-bit)... %f %f\n",a,b);
-    
-#if 0		
+    printf("Testing double (64-bit)...\n");
+
     c = a + b; /* 16.5 */
     d = a - b; /* 8.5 */
     e = a * b; /* 50.0 */
@@ -90,18 +89,15 @@ static void test_float64(void) {
     ASSERT(l == 12, "double to long cast");
     b = (double)l;
     ASSERT(b == 12.0, "long to double cast");
-#endif
-    printf("Testing double PASS...\n");
 }
 
 static void test_float128(void) {
-/*    long double a = 100.25L;
+    long double a = 100.25L;
     long double b = 25.0L;
     long double c, d, e, f;
     int i;
     printf("Testing long double (128-bit quad)...\n");
-*/
-#if 0
+
     c = a + b; /* 125.25L */
     d = a - b; /* 75.25L */
     e = a * 2.0L; /* 200.5L */
@@ -128,7 +124,6 @@ static void test_float128(void) {
     ASSERT(i == 100, "long double to int cast");
     b = (long double)i;
     ASSERT(b == 100.0L, "int to long double cast");
-#endif
 }
 
 static void test_cross_conversions(void) {
@@ -179,6 +174,26 @@ static void test_mixed_arithmetic(void) {
     ASSERT(r2 > 102.49L && r2 < 102.51L, "float + long double");
 }
 
+static void test_float_printf(void) {
+    char buf[128];
+    printf("Testing floating point printf/sprintf...\n");
+
+    sprintf(buf, "%f", 3.14159);
+    ASSERT(buf[0] == '3' && buf[1] == '.' && buf[2] == '1' && buf[3] == '4', "sprintf %f");
+
+    sprintf(buf, "%.2f", 123.456);
+    ASSERT(buf[0] == '1' && buf[1] == '2' && buf[2] == '3' && buf[3] == '.' && buf[4] == '4' && buf[5] == '6', "sprintf %.2f rounding");
+
+    sprintf(buf, "%.4f", -0.01234);
+    ASSERT(buf[0] == '-' && buf[1] == '0' && buf[2] == '.' && buf[3] == '0' && buf[4] == '1' && buf[5] == '2' && buf[6] == '3', "sprintf negative %.4f");
+
+    sprintf(buf, "%e", 12345.0);
+    ASSERT(buf[0] == '1' && buf[1] == '.' && buf[8] == 'e' && buf[9] == '+' && buf[10] == '0' && buf[11] == '4', "sprintf %e");
+
+    sprintf(buf, "%g", 0.000123);
+    ASSERT(buf[0] == '0' || buf[0] == '1', "sprintf %g");
+}
+
 int main(void) {
     printf("Running Floating Point Tests...\n");
     test_float_sizes();
@@ -187,6 +202,7 @@ int main(void) {
     test_float128();
     test_cross_conversions();
     test_mixed_arithmetic();
+    test_float_printf();
 
     printf("All Floating Point Tests PASSED!\n");
     return 0;

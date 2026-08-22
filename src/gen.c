@@ -864,13 +864,21 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
             }
 
             if (node->u.call.func->kind == AST_VAR && node->u.call.func->u.sym->kind == SYM_FUNC) {
+                int fp_regs = 0;
                 /* Pop first reg_words_count arguments into ABI registers */
                 for (i = 0; i < reg_words_count; i++) {
                     emit(gen, "    popq %s", arg_regs64[i]);
                 }
-                emit(gen, "    movb $0, %%al");
+                for (i = 0; i < reg_words_count && i < num_args && fp_regs < 8; i++) {
+                    AstNode *arg = (AstNode *)vec_get(args, i);
+                    if (arg->type && type_is_floating(arg->type)) {
+                        emit(gen, "    movq %s, %%xmm%d", arg_regs64[i], fp_regs++);
+                    }
+                }
+                emit(gen, "    movb $%d, %%al", fp_regs);
                 emit(gen, "    call %s", node->u.call.func->u.sym->name);
             } else {
+                int fp_regs = 0;
                 gen_expr(gen, node->u.call.func);
                 emit(gen, "    pushq %%rax");
                 for (i = 0; i < reg_words_count; i++) {
@@ -880,7 +888,13 @@ static void gen_expr(CodeGen *gen, AstNode *node) {
                 if (reg_words_count > 0) {
                     emit(gen, "    addq $%d, %%rsp", reg_words_count * 8);
                 }
-                emit(gen, "    movb $0, %%al");
+                for (i = 0; i < reg_words_count && i < num_args && fp_regs < 8; i++) {
+                    AstNode *arg = (AstNode *)vec_get(args, i);
+                    if (arg->type && type_is_floating(arg->type)) {
+                        emit(gen, "    movq %s, %%xmm%d", arg_regs64[i], fp_regs++);
+                    }
+                }
+                emit(gen, "    movb $%d, %%al", fp_regs);
                 emit(gen, "    call *%%r11");
             }
 
