@@ -97,8 +97,8 @@ static void test_float128(void) {
     long double b = 25.0L;
     long double c, d, e, f;
     int i;
-*/
     printf("Testing long double (128-bit quad)...\n");
+*/
 #if 0
     c = a + b; /* 125.25L */
     d = a - b; /* 75.25L */
