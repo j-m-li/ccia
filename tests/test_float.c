@@ -65,17 +65,21 @@ static void test_float64(void) {
     printf("Testing double (64-bit)... \n");
 
     c = a + b; /* 16.5 */
+    printf("Testing double (64-bit) 0... \n");
     d = a - b; /* 8.5 */
     e = a * b; /* 50.0 */
     f = a / b; /* 3.125 */
+    printf("Testing double (64-bit) 1... \n");
     ASSERT(c > 16.49 && c < 16.51, "double add");
     ASSERT(d > 8.49 && d < 8.51, "double sub");
     ASSERT(e > 49.99 && e < 50.01, "double mul");
     ASSERT(f > 3.124 && f < 3.126, "double div");
 
+    printf("Testing double (64-bit) 2... \n");
     /* Unary negation */
     ASSERT(-a < 0.0, "double neg");
 
+    printf("Testing double (64-bit) 3... \n");
     /* Comparisons */
     ASSERT(a > b, "double gt");
     ASSERT(b < a, "double lt");
@@ -84,10 +88,13 @@ static void test_float64(void) {
     ASSERT(a == 12.5, "double eq");
     ASSERT(a != b, "double ne");
 
+    printf("Testing double (64-bit) 4... \n");
     /* Conversions */
     l = (long)a;
+    printf("Testing double (64-bit) 5... \n");
     ASSERT(l == 12, "double to long cast");
     b = (double)l;
+    printf("Testing double (64-bit) 6... \n");
     ASSERT(b == 12.0, "long to double cast");
     printf("Testing double (64-bit) PASS... \n");
 }
